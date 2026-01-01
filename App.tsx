@@ -4,7 +4,7 @@ import { OcrStyle } from './types';
 import ImageUploader from './components/ImageUploader';
 import StyleSelector from './components/StyleSelector';
 import ResultDisplay from './components/ResultDisplay';
-import { performOCR } from './services/geminiService';
+import { performOCR } from './ocrService';
 
 const App: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);

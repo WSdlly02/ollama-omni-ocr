@@ -1,24 +1,15 @@
-import { GoogleGenAI } from "@google/genai";
-import { OcrStyle } from '../types';
-import { STYLE_PROMPTS } from '../constants';
-
-// Initialize Gemini Client
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+import { OcrStyle } from './types';
+import { STYLE_PROMPTS } from './constants';
 
 /**
- * Helper to convert a File object to a Base64 string suitable for the API.
+ * Helper to convert a File object to a Base64 string.
  */
-const fileToPart = (file: File): Promise<{ inlineData: { data: string; mimeType: string } }> => {
+const fileToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onloadend = () => {
       const base64String = (reader.result as string).split(',')[1];
-      resolve({
-        inlineData: {
-          data: base64String,
-          mimeType: file.type,
-        },
-      });
+      resolve(base64String);
     };
     reader.onerror = reject;
     reader.readAsDataURL(file);
@@ -30,20 +21,33 @@ const fileToPart = (file: File): Promise<{ inlineData: { data: string; mimeType:
  */
 export const performOCR = async (file: File, style: OcrStyle): Promise<string> => {
   try {
-    const imagePart = await fileToPart(file);
+    const base64Image = await fileToBase64(file);
     const prompt = STYLE_PROMPTS[style];
 
-    // Using gemini-3-flash-preview for speed and good vision capabilities on text tasks
-    const model = 'gemini-3-flash-preview';
-
-    const response = await ai.models.generateContent({
-      model: model,
-      contents: {
-        parts: [imagePart, { text: prompt }],
+    const response = await fetch("http://localhost:11434/api/generate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
       },
+      body: JSON.stringify({
+        model: "qwen3-vl:8b",
+        prompt: prompt,
+        images: [base64Image],
+        think: false,
+        stream: false,
+        options: {
+          temperature: 0,
+        },
+      }),
     });
 
-    const text = response.text;
+    if (!response.ok) {
+      throw new Error(`Ollama API Error: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const text = data.response;
+
     if (!text) {
       throw new Error("No text generated from the model.");
     }
@@ -63,7 +67,7 @@ export const performOCR = async (file: File, style: OcrStyle): Promise<string> =
     return cleanText;
 
   } catch (error) {
-    console.error("Gemini OCR Error:", error);
+    console.error("Ollama OCR Error:", error);
     if (error instanceof Error) {
         throw new Error(`OCR Failed: ${error.message}`);
     }
