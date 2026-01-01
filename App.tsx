@@ -49,15 +49,9 @@ const App: React.FC = () => {
               <Scan size={24} />
             </div>
             <h1 className="text-xl font-bold tracking-tight text-slate-900">
-              Gemini Omni-OCR
+              Ollama Omni-OCR
             </h1>
           </div>
-          <a 
-            href="#" 
-            className="text-sm font-medium text-slate-500 hover:text-indigo-600 transition-colors hidden sm:block"
-          >
-            Powered by Gemini 3 Flash
-          </a>
         </div>
       </header>
 

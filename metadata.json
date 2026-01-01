@@ -1,5 +1,5 @@
 {
-  "name": "Gemini Omni-OCR",
-  "description": "A versatile AI-powered OCR tool capable of converting images to Text, Markdown, LaTeX, Tables, JSON, or descriptive text using the Gemini API.",
+  "name": "Ollama Omni-OCR",
+  "description": "A versatile AI-powered OCR tool capable of converting images to Text, Markdown, LaTeX, Tables, JSON, or descriptive text using the Ollama API.",
   "requestFramePermissions": []
 }
