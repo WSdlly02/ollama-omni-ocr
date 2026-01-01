@@ -48,7 +48,7 @@ docker run -d \
   -p 80:80 \
   -p 443:443 \
   --add-host=host.docker.internal:host-gateway \
-  -e OLLAMA_HOST=host.docker.internal:11434 \
+  -e OLLAMA_HOST=http://host.docker.internal:11434 \
   --name omni-ocr \
   ollama-omni-ocr
 ```
@@ -59,7 +59,7 @@ podman run -d \
   -p 9080:80 \
   -p 9443:443 \
   --add-host=host.docker.internal:host-gateway \
-  -e OLLAMA_HOST=host.docker.internal:11434 \
+  -e OLLAMA_HOST=http://host.docker.internal:11434 \
   --name omni-ocr \
   localhost/ollama-omni-ocr
 ```

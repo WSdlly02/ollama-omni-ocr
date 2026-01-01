@@ -28,7 +28,7 @@
 		}
 
 		# 反向代理到 Ollama
-		reverse_proxy {$OLLAMA_HOST} {
+		reverse_proxy {$OLLAMA_HOST:http://host.docker.internal:11434} {
 			header_up Host {upstream_hostport}
 			header_up X-Real-IP {remote_host}
 			header_up X-Forwarded-For {remote_host}
