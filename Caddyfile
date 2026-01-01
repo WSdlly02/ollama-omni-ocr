@@ -1,0 +1,50 @@
+{
+	# 全局配置
+}
+
+:80, :443 {
+	# 使用内部自签名证书，允许通过任何 IP 或域名访问 HTTPS
+	tls internal
+
+	# 开启 gzip 压缩
+	encode gzip
+
+	# 静态文件根目录
+	root * /usr/share/caddy
+
+	# 1. 优先处理 /ollama 路径的反向代理
+	handle_path /ollama/* {
+		# 全面的 CORS 允许头
+		header {
+			Access-Control-Allow-Origin *
+			Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+			Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With, Accept, Origin"
+			Access-Control-Expose-Headers "Content-Length, Content-Range, Content-Type"
+			Access-Control-Max-Age 3600
+		}
+
+		# 专门处理跨域预检 (Preflight) 请求
+		@options method OPTIONS
+		handle @options {
+			respond "" 204
+		}
+
+		# 反向代理到 Ollama
+		# 注意：$OLLAMA_HOST 必须包含协议和端口，例如 http://192.168.1.10:11434
+		reverse_proxy {$OLLAMA_HOST} {
+			header_up Host {upstream_hostport}
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+
+	# 2. 处理其他所有请求 (静态文件 + SPA)
+	handle {
+		# 静态文件服务
+		file_server
+
+		# 单页应用 (SPA) 重定向：如果找不到文件，返回 index.html
+		try_files {path} /index.html
+	}
+}

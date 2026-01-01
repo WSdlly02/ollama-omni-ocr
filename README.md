@@ -30,4 +30,36 @@ $env:OLLAMA_ORIGINS="*"; $env:OLLAMA_HOST="0.0.0.0"; ollama serve
 2. Run the app:
    `npm run dev`
 3. Open the app in your browser.
-4. Click the **Settings** icon (top right) to configure your Ollama URL (e.g., `http://<your-server-ip>:11434`) and Model name if needed.
+4. The app is configured to use `/ollama` as the base URL, which is proxied to `http://localhost:11434` during development.
+
+## Docker Deployment
+
+You can also run the application using Docker. This setup includes Caddy as a web server with automatic HTTPS support.
+
+### Build and Run
+
+```bash
+# Build the image
+docker build -t ollama-omni-ocr .
+
+# Run the container
+# This will listen on all interfaces, allowing LAN access via IP or hostname
+docker run -d \
+  -p 80:80 \
+  -p 443:443 \
+  --add-host=host.docker.internal:host-gateway \
+  -e OLLAMA_HOST=host.docker.internal:11434 \
+  --name omni-ocr \
+  ollama-omni-ocr
+```
+
+**Podman Users:**
+```bash
+podman run -d \
+  -p 9080:80 \
+  -p 9443:443 \
+  --add-host=host.docker.internal:host-gateway \
+  -e OLLAMA_HOST=host.docker.internal:11434 \
+  --name omni-ocr \
+  localhost/ollama-omni-ocr
+```
