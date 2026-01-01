@@ -19,7 +19,7 @@ const fileToBase64 = (file: File): Promise<string> => {
 /**
  * Performs OCR on the provided image file using the specified style.
  */
-export const performOCR = async (file: File, style: OcrStyle, baseUrl: string = "http://localhost:11434", model: string = "qwen3-vl:8b"): Promise<string> => {
+export const performOCR = async (file: File, style: OcrStyle, baseUrl: string = "/ollama", model: string = "qwen3-vl:8b"): Promise<string> => {
   try {
     const base64Image = await fileToBase64(file);
     const prompt = STYLE_PROMPTS[style];
@@ -27,7 +27,14 @@ export const performOCR = async (file: File, style: OcrStyle, baseUrl: string = 
     // Ensure baseUrl doesn't end with a slash
     const cleanBaseUrl = baseUrl.replace(/\/$/, '');
 
-    const response = await fetch(`${cleanBaseUrl}/api/generate`, {
+    // Construct the full URL
+    // If cleanBaseUrl is a relative path (e.g. "/ollama"), fetch handles it relative to current origin.
+    // But we can be explicit if needed. The current logic works for both:
+    // 1. "/ollama" -> "/ollama/api/generate" (Proxied)
+    // 2. "http://localhost:11434" -> "http://localhost:11434/api/generate" (Direct)
+    const finalUrl = `${cleanBaseUrl}/api/generate`;
+
+    const response = await fetch(finalUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
