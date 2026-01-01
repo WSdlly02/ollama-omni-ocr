@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
-import { Scan, Sparkles } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Scan, Sparkles, Settings } from 'lucide-react';
 import { OcrStyle } from './types';
 import ImageUploader from './components/ImageUploader';
 import StyleSelector from './components/StyleSelector';
 import ResultDisplay from './components/ResultDisplay';
+import SettingsModal from './components/SettingsModal';
 import { performOCR } from './ocrService';
 
 const App: React.FC = () => {
@@ -13,6 +14,17 @@ const App: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Settings State
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [baseUrl, setBaseUrl] = useState(() => localStorage.getItem('ollama_base_url') || 'http://localhost:11434');
+  const [model, setModel] = useState(() => localStorage.getItem('ollama_model') || 'qwen3-vl:8b');
+
+  // Persist settings
+  useEffect(() => {
+    localStorage.setItem('ollama_base_url', baseUrl);
+    localStorage.setItem('ollama_model', model);
+  }, [baseUrl, model]);
+
   const handleRecognize = async () => {
     if (!file) return;
 
@@ -21,7 +33,7 @@ const App: React.FC = () => {
     setResult(null);
 
     try {
-      const ocrText = await performOCR(file, style);
+      const ocrText = await performOCR(file, style, baseUrl, model);
       setResult(ocrText);
     } catch (err: any) {
       setError(err.message || "Failed to process image.");
@@ -52,6 +64,13 @@ const App: React.FC = () => {
               Ollama Omni-OCR
             </h1>
           </div>
+          <button
+            onClick={() => setIsSettingsOpen(true)}
+            className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-all"
+            title="Settings"
+          >
+            <Settings size={20} />
+          </button>
         </div>
       </header>
 
@@ -133,6 +152,15 @@ const App: React.FC = () => {
 
         </div>
       </main>
+
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        baseUrl={baseUrl}
+        setBaseUrl={setBaseUrl}
+        model={model}
+        setModel={setModel}
+      />
     </div>
   );
 };

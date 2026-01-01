@@ -19,18 +19,21 @@ const fileToBase64 = (file: File): Promise<string> => {
 /**
  * Performs OCR on the provided image file using the specified style.
  */
-export const performOCR = async (file: File, style: OcrStyle): Promise<string> => {
+export const performOCR = async (file: File, style: OcrStyle, baseUrl: string = "http://localhost:11434", model: string = "qwen3-vl:8b"): Promise<string> => {
   try {
     const base64Image = await fileToBase64(file);
     const prompt = STYLE_PROMPTS[style];
 
-    const response = await fetch("http://localhost:11434/api/generate", {
+    // Ensure baseUrl doesn't end with a slash
+    const cleanBaseUrl = baseUrl.replace(/\/$/, '');
+
+    const response = await fetch(`${cleanBaseUrl}/api/generate`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "qwen3-vl:8b",
+        model: model,
         prompt: prompt,
         images: [base64Image],
         think: false,
