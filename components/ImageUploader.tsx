@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Upload, Image as ImageIcon, X, ClipboardPaste } from 'lucide-react';
+import { Upload, X, ClipboardPaste } from 'lucide-react';
 
 interface ImageUploaderProps {
   file: File | null;

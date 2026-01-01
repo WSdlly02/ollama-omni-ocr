@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Scan, Sparkles, Settings } from 'lucide-react';
+import { Sparkles, Settings } from 'lucide-react';
 import { OcrStyle } from './types';
 import ImageUploader from './components/ImageUploader';
 import StyleSelector from './components/StyleSelector';
@@ -58,7 +58,13 @@ const App: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="bg-indigo-600 p-2 rounded-lg text-white">
-              <Scan size={24} />
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 7V5a2 2 0 0 1 2-2h2"/>
+                <path d="M17 3h2a2 2 0 0 1 2 2v2"/>
+                <path d="M21 17v2a2 2 0 0 1-2 2h-2"/>
+                <path d="M7 21H5a2 2 0 0 1-2-2v-2"/>
+                <line x1="7" y1="12" x2="17" y2="12"/>
+              </svg>
             </div>
             <h1 className="text-xl font-bold tracking-tight text-slate-900">
               Ollama Omni-OCR

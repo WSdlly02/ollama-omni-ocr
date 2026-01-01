@@ -2,8 +2,15 @@
 	# 全局配置
 }
 
-:80, :443 {
-	# 使用内部自签名证书，允许通过任何 IP 或域名访问 HTTPS
+# 1. HTTP 重定向块：将所有 80 端口请求重定向到 HTTPS
+:80 {
+	# 使用 {host} 保持原有域名/IP，{uri} 保持原有路径
+	redir https://{host}{uri} permanent
+}
+
+# 2. HTTPS 业务块：仅监听 443
+:443 {
+	# 使用自签名证书
 	tls internal
 
 	# 开启 gzip 压缩
@@ -12,9 +19,11 @@
 	# 静态文件根目录
 	root * /usr/share/caddy
 
-	# 1. 优先处理 /ollama 路径的反向代理
+	# --- 路径处理 A: Ollama 反向代理 ---
+	# 使用 handle_path 而不是 handle，它会自动剥离 /ollama 前缀
+	# 例如：请求 /ollama/api/tags -> 发送给后端 /api/tags
 	handle_path /ollama/* {
-		# 全面的 CORS 允许头
+		# CORS 设置
 		header {
 			Access-Control-Allow-Origin *
 			Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"
@@ -23,14 +32,14 @@
 			Access-Control-Max-Age 3600
 		}
 
-		# 专门处理跨域预检 (Preflight) 请求
+		# 处理 OPTIONS 预检请求
 		@options method OPTIONS
 		handle @options {
 			respond "" 204
 		}
 
-		# 反向代理到 Ollama
-		# 注意：$OLLAMA_HOST 必须包含协议和端口，例如 http://192.168.1.10:11434
+		# 反向代理
+		# 建议：确保环境变量 OLLAMA_HOST 填写正确，如 http://host.docker.internal:11434
 		reverse_proxy {$OLLAMA_HOST} {
 			header_up Host {upstream_hostport}
 			header_up X-Real-IP {remote_host}
@@ -39,12 +48,13 @@
 		}
 	}
 
-	# 2. 处理其他所有请求 (静态文件 + SPA)
+	# --- 路径处理 B: 前端静态资源 (SPA) ---
+	# 使用 handle 捕获其余所有请求
 	handle {
-		# 静态文件服务
-		file_server
-
-		# 单页应用 (SPA) 重定向：如果找不到文件，返回 index.html
+		# 如果请求的文件不存在，重写到 index.html (SPA 必备)
 		try_files {path} /index.html
+
+		# 提供文件服务
+		file_server
 	}
 }
