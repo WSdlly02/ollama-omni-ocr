@@ -33,7 +33,9 @@ const App: React.FC = () => {
     setResult(null);
 
     try {
-      const ocrText = await performOCR(file, style, baseUrl, model);
+      const ocrText = await performOCR(file, style, baseUrl, model, (text) => {
+        setResult(text);
+      });
       setResult(ocrText);
     } catch (err: any) {
       setError(err.message || "Failed to process image.");

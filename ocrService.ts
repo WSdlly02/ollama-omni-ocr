@@ -19,12 +19,14 @@ const fileToBase64 = (file: File): Promise<string> => {
 
 /**
  * Performs OCR on the provided image file using the specified style.
+ * Supports streaming output via the onUpdate callback.
  */
 export const performOCR = async (
   file: File,
   style: OcrStyle,
   baseUrl: string = `${window.location.origin}/ollama/v1`,
-  model: string = "qwen3-vl:8b"
+  model: string = "qwen3-vl:8b",
+  onUpdate?: (text: string) => void
 ): Promise<string> => {
   try {
     const base64Image = await fileToBase64(file);
@@ -38,7 +40,8 @@ export const performOCR = async (
       dangerouslyAllowBrowser: true,
     });
 
-    const response = await openai.chat.completions.create({
+    // @ts-ignore - Using any to allow extra_body and streaming parameters for Ollama
+    const stream = await openai.chat.completions.create({
       model: model,
       messages: [
         {
@@ -60,12 +63,12 @@ export const performOCR = async (
         },
       ],
       temperature: 0.7,
-      max_tokens: 4096,
-      // @ts-ignore - Ollama specific parameters
+      max_tokens: 8192,
+      stream: true,
       extra_body: {
         think: false,
         options: {
-          num_ctx: 8192,
+          num_ctx: 32768, // Increased context size
           repeat_penalty: 1.2,
           top_k: 20,
           top_p: 0.8,
@@ -74,15 +77,20 @@ export const performOCR = async (
       },
     });
 
-    let text = response.choices[0]?.message?.content;
-
-    if (!text) {
-      throw new Error("No text generated from the model.");
+    let fullText = "";
+    for await (const chunk of stream) {
+      const content = chunk.choices[0]?.delta?.content || "";
+      fullText += content;
+      
+      // Clean up thinking tags and markdown if they appear in the stream
+      let displayText = fullText.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+      
+      if (onUpdate) {
+        onUpdate(displayText);
+      }
     }
 
-    text = text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
-
-    let cleanText = text.trim();
+    let cleanText = fullText.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
     if (cleanText.startsWith("```") && cleanText.endsWith("```")) {
       const firstLineBreak = cleanText.indexOf("\n");
       if (firstLineBreak !== -1) {
