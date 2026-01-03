@@ -58,11 +58,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
               type="text"
               value={model}
               onChange={(e) => setModel(e.target.value)}
-              placeholder="qwen3-vl:8b"
+              placeholder="qwen3-vl:8b-instruct"
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
             />
             <p className="text-xs text-slate-500 mt-1">
-              The vision model to use (e.g., qwen3-vl:8b, llava).
+              The vision model to use (e.g., qwen3-vl:8b-instruct, llava).
             </p>
           </div>
         </div>

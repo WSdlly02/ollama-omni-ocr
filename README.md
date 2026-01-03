@@ -7,7 +7,7 @@ This contains everything you need to run your app locally using Ollama.
 **Prerequisites:**
 1. Node.js
 2. [Ollama](https://ollama.com/) installed and running.
-3. Pull the model: `ollama pull qwen3-vl:8b`
+3. Pull the model: `ollama pull qwen3-vl:8b-instruct`
 
 **Important: Configure Ollama for External Access (CORS)**
 

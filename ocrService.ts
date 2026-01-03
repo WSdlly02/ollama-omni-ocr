@@ -25,7 +25,7 @@ export const performOCR = async (
   file: File,
   style: OcrStyle,
   baseUrl: string = `${window.location.origin}/ollama/v1`,
-  model: string = "qwen3-vl:8b",
+  model: string = "qwen3-vl:8b-instruct",
   onUpdate?: (text: string) => void
 ): Promise<string> => {
   try {
@@ -62,14 +62,15 @@ export const performOCR = async (
           ],
         },
       ],
-      temperature: 0.7,
+      temperature: 0.1,
       max_tokens: 16384,
       stream: true,
       extra_body: {
         think: false,
         options: {
+          seed: 42,
           num_ctx: 16384, // Increased context size
-          repeat_penalty: 1.2,
+          repeat_penalty: 1.1,
           top_k: 20,
           top_p: 0.8,
           min_p: 0,
