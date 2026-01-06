@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Sparkles, Settings } from 'lucide-react';
 import { OcrStyle, OcrMode } from './types';
-import ImageUploader from './components/ImageUploader';
+import InputPanel from './components/InputPanel';
 import StyleSelector from './components/StyleSelector';
 import ModeSelector from './components/ModeSelector';
 import ResultDisplay from './components/ResultDisplay';
@@ -20,6 +20,7 @@ const App: React.FC = () => {
   const [model, setModel] = useState(() => localStorage.getItem('ollama_model') || 'qwen3-vl:8b-instruct');
   const [style, setStyle] = useState<OcrStyle>(() => (localStorage.getItem('ocr_style') as OcrStyle) || OcrStyle.TEXT);
   const [mode, setMode] = useState<OcrMode>(() => (localStorage.getItem('ocr_mode') as OcrMode) || OcrMode.STRICT);
+  const [inputMode, setInputMode] = useState<'upload' | 'handwriting'>(() => (localStorage.getItem('input_mode') as 'upload' | 'handwriting') || 'upload');
 
   // Persist settings
   useEffect(() => {
@@ -27,7 +28,8 @@ const App: React.FC = () => {
     localStorage.setItem('ollama_model', model);
     localStorage.setItem('ocr_style', style);
     localStorage.setItem('ocr_mode', mode);
-  }, [baseUrl, model, style, mode]);
+    localStorage.setItem('input_mode', inputMode);
+  }, [baseUrl, model, style, mode, inputMode]);
 
   const handleRecognize = async () => {
     if (!file) return;
@@ -48,14 +50,19 @@ const App: React.FC = () => {
     }
   };
 
-  const handleFileChange = (newFile: File | null) => {
+  const handleFileChange = useCallback((newFile: File | null) => {
     setFile(newFile);
-    // Reset result when new file is uploaded to avoid confusion
-    if (newFile) {
-        setResult(null);
-        setError(null);
+    // Explicitly do NOT clear result here to allow adjusting handwriting 
+    // without losing previous recognition immediately.
+    // Logic: result is only cleared when recognition starts or input mode changes.
+    if (newFile === null) {
+       // If file is cleared (e.g. handwriting clear), maybe clear result? 
+       // User preferred "modify pen strokes" -> keep result. 
+       // "Clear canvas" -> probably should clear result? 
+       // But user said "editing strokes" clears result. 
+       // So changing strokes provides a new file.
     }
-  };
+  }, []);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800">
@@ -94,18 +101,14 @@ const App: React.FC = () => {
           <div className="w-full lg:w-5/12 lg:h-[calc(100vh-8rem)] lg:sticky lg:top-24 flex flex-col">
             <div className="flex-grow overflow-y-auto pr-2 space-y-8 pb-4 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
               
-              {/* 1. Upload */}
-              <section>
-                <div className="flex items-center gap-2 mb-4">
-                  <span className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-900 text-white text-xs font-bold">1</span>
-                  <h2 className="text-lg font-bold text-slate-800">Source Image</h2>
-                </div>
-                <ImageUploader 
-                  file={file} 
-                  setFile={handleFileChange} 
-                  disabled={isProcessing}
-                />
-              </section>
+              {/* 1. Upload / Handwriting (Managed by InputPanel) */}
+              <InputPanel 
+                inputMode={inputMode}
+                setInputMode={setInputMode}
+                file={file}
+                setFile={handleFileChange}
+                isProcessing={isProcessing}
+              />
 
               {/* 2. Options */}
               <section>
