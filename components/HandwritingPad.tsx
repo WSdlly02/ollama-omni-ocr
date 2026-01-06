@@ -41,20 +41,13 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({ onFileChange, disabled 
   const eraserRadius = 5;
 
   // --- Helpers ---
-  const getCoordinates = (e: React.MouseEvent | React.TouchEvent): Point | null => {
+  const getCoordinates = (e: React.PointerEvent | PointerEvent | React.MouseEvent | React.TouchEvent): Point | null => {
     const canvas = canvasRef.current;
     if (!canvas) return null;
 
     const rect = canvas.getBoundingClientRect();
-    let clientX, clientY;
-
-    if ('touches' in e) {
-      clientX = e.changedTouches[0].clientX;
-      clientY = e.changedTouches[0].clientY;
-    } else {
-      clientX = (e as React.MouseEvent).clientX;
-      clientY = (e as React.MouseEvent).clientY;
-    }
+    const clientX = 'clientX' in e ? e.clientX : (e as any).changedTouches[0].clientX;
+    const clientY = 'clientY' in e ? e.clientY : (e as any).changedTouches[0].clientY;
 
     return {
       x: clientX - rect.left,
@@ -177,7 +170,8 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({ onFileChange, disabled 
     });
   };
 
-  const handlePointerDown = (e: React.MouseEvent | React.TouchEvent) => {
+  const handlePointerDown = (e: React.PointerEvent) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
     if (disabled) return;
     
     const point = getCoordinates(e);
@@ -200,38 +194,76 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({ onFileChange, disabled 
     }
   };
 
-  const handlePointerMove = (e: React.MouseEvent | React.TouchEvent) => {
+  const handlePointerMove = (e: React.PointerEvent) => {
     if (disabled) return;
-    
-    const isMouseDown = 'buttons' in e ? e.buttons === 1 : true;
-    if (!isMouseDown) return;
+    if (!e.buttons) return;
 
-    const point = getCoordinates(e);
-    if (!point) return;
+    // Use getCoalescedEvents for higher precision if available
+    const events = (e.nativeEvent instanceof PointerEvent && 'getCoalescedEvents' in e.nativeEvent) 
+      ? e.nativeEvent.getCoalescedEvents() 
+      : [e.nativeEvent];
 
     if (tool === 'pen') {
       setActiveStroke(prev => {
         if (!prev) return null;
-        const newMinX = Math.min(prev.minX, point.x);
-        const newMaxX = Math.max(prev.maxX, point.x);
-        const newMinY = Math.min(prev.minY, point.y);
-        const newMaxY = Math.max(prev.maxY, point.y);
         
+        let newPoints = [...prev.points];
+        let { minX, maxX, minY, maxY } = prev;
+
+        events.forEach(event => {
+            const point = getCoordinates(event);
+            if (!point) return;
+            
+            // Simple distance filter to reduce noise (0.5px)
+            const lastPoint = newPoints[newPoints.length - 1];
+            if (lastPoint) {
+                const dist = Math.hypot(point.x - lastPoint.x, point.y - lastPoint.y);
+                // Reduce standard threshold to capturing fine detail
+                if (dist < 0.1) return; 
+            }
+
+            newPoints.push(point);
+            minX = Math.min(minX, point.x);
+            maxX = Math.max(maxX, point.x);
+            minY = Math.min(minY, point.y);
+            maxY = Math.max(maxY, point.y);
+        });
+
         return {
           ...prev,
-          points: [...prev.points, point],
-          minX: newMinX, maxX: newMaxX, minY: newMinY, maxY: newMaxY
+          points: newPoints,
+          minX, maxX, minY, maxY
         };
       });
     } else if (tool === 'eraser') {
-      const remaining = checkEraserHit(point.x, point.y, currentStrokes);
-      if (remaining.length !== currentStrokes.length) {
-        commitHistory(remaining); 
+      // Eraser doesn't need high frequency updates, just the latest position is fine usually,
+      // but consistent logic doesn't hurt.
+      events.forEach(event => {
+          const point = getCoordinates(event);
+          if (point) {
+             // We can't batch state updates purely functionally easily here because 
+             // checkEraserHit depends on currentStrokes which doesn't change *inside* this loop.
+             // But for eraser, we generally just care about the "current" position. 
+             // Using the last event is usually sufficient for UI feedback, 
+             // but to erase effectively we should check all points.
+             // However, React state updates are async. 
+             // Let's just use the final event to trigger the erase check to avoid complexity/lag.
+             // Or better: compute the "swept area"? No, simple Point check is fine for now.
+          }
+      });
+      // Just consider the latest point for eraser to avoid lag
+      const point = getCoordinates(e);
+      if (point) {
+          const remaining = checkEraserHit(point.x, point.y, currentStrokes);
+          if (remaining.length !== currentStrokes.length) {
+            commitHistory(remaining); 
+          }
       }
     }
   };
 
-  const handlePointerUp = () => {
+  const handlePointerUp = (e: React.PointerEvent) => {
+    e.currentTarget.releasePointerCapture(e.pointerId);
     if (tool === 'pen' && activeStroke) {
       commitHistory([...currentStrokes, activeStroke]);
       setActiveStroke(null);
@@ -368,13 +400,10 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({ onFileChange, disabled 
       <div className="relative flex-1 bg-white cursor-crosshair overflow-hidden touch-none">
         <canvas
           ref={canvasRef}
-          onMouseDown={handlePointerDown}
-          onMouseMove={handlePointerMove}
-          onMouseUp={handlePointerUp}
-          onMouseLeave={handlePointerUp}
-          onTouchStart={handlePointerDown}
-          onTouchMove={handlePointerMove}
-          onTouchEnd={handlePointerUp}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerLeave={handlePointerUp}
           className="block w-full h-full touch-none outline-none"
           style={{ touchAction: 'none' }}
         />
