@@ -110,6 +110,33 @@ const App: React.FC = () => {
                 isProcessing={isProcessing}
               />
 
+              {/* Action Button */}
+              <div className="pt-2">
+                <button
+                  onClick={handleRecognize}
+                  disabled={!file || isProcessing}
+                  className={`
+                    w-full py-4 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-all transform
+                    ${!file || isProcessing 
+                      ? 'bg-slate-200 text-slate-400 cursor-not-allowed' 
+                      : 'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-[0.98] shadow-indigo-500/20'
+                    }
+                  `}
+                >
+                  {isProcessing ? (
+                    <>
+                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={20} />
+                      Start Recognition
+                    </>
+                  )}
+                </button>
+              </div>
+
               {/* 2. Options */}
               <section>
                 <div className="flex items-center gap-2 mb-4">
@@ -129,34 +156,6 @@ const App: React.FC = () => {
                   />
                 </div>
               </section>
-            </div>
-
-            {/* Sticky CTA */}
-            <div className="relative pt-6 mt-auto bg-slate-50 z-10">
-              <div className="absolute top-0 left-0 w-full h-12 -mt-12 bg-gradient-to-t from-slate-50 to-transparent pointer-events-none"></div>
-              <button
-                onClick={handleRecognize}
-                disabled={!file || isProcessing}
-                className={`
-                  w-full py-4 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-all transform
-                  ${!file || isProcessing 
-                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed' 
-                    : 'bg-indigo-600 text-white hover:bg-indigo-700 hover:-translate-y-1 hover:shadow-indigo-500/30'
-                  }
-                `}
-              >
-                {isProcessing ? (
-                  <>
-                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Processing...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles size={20} />
-                    Start Recognition
-                  </>
-                )}
-              </button>
             </div>
           </div>
 
