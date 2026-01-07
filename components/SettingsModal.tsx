@@ -1,5 +1,5 @@
 import React from 'react';
-import { X } from 'lucide-react';
+import { X, Moon, Sun, Monitor } from 'lucide-react';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -8,6 +8,8 @@ interface SettingsModalProps {
   setBaseUrl: (url: string) => void;
   model: string;
   setModel: (model: string) => void;
+  theme: 'system' | 'light' | 'dark';
+  setTheme: (theme: 'system' | 'light' | 'dark') => void;
 }
 
 const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -17,25 +19,75 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   setBaseUrl,
   model,
   setModel,
+  theme,
+  setTheme,
 }) => {
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
-        <div className="flex items-center justify-between p-4 border-b border-slate-200">
-          <h3 className="text-lg font-bold text-slate-900">Settings</h3>
+      <div className="bg-white dark:bg-slate-900 rounded-xl shadow-xl w-full max-w-md overflow-hidden border border-slate-200 dark:border-slate-700">
+        <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-800">
+          <h3 className="text-lg font-bold text-slate-900 dark:text-white">Settings</h3>
           <button
             onClick={onClose}
-            className="text-slate-500 hover:text-slate-700 transition-colors"
+            className="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
           >
             <X size={20} />
           </button>
         </div>
         
-        <div className="p-6 space-y-4">
+        <div className="p-6 space-y-6">
+          {/* Theme Selector */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+              Appearance
+            </label>
+            <div className="grid grid-cols-3 gap-2 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+              <button
+                onClick={() => setTheme('system')}
+                className={`
+                  flex items-center justify-center gap-2 py-2 rounded-md text-sm font-medium transition-all
+                  ${theme === 'system'
+                    ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                  }
+                `}
+              >
+                <Monitor size={16} />
+                <span>System</span>
+              </button>
+              <button
+                onClick={() => setTheme('light')}
+                className={`
+                  flex items-center justify-center gap-2 py-2 rounded-md text-sm font-medium transition-all
+                  ${theme === 'light'
+                    ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                  }
+                `}
+              >
+                <Sun size={16} />
+                <span>Light</span>
+              </button>
+              <button
+                onClick={() => setTheme('dark')}
+                className={`
+                  flex items-center justify-center gap-2 py-2 rounded-md text-sm font-medium transition-all
+                  ${theme === 'dark'
+                    ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                  }
+                `}
+              >
+                <Moon size={16} />
+                <span>Dark</span>
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
               Ollama Base URL
             </label>
             <input
@@ -43,15 +95,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
               value={baseUrl}
               onChange={(e) => setBaseUrl(e.target.value)}
               placeholder={`${window.location.origin}/ollama/v1`}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all placeholder-slate-400 dark:placeholder-slate-500"
             />
-            <p className="text-xs text-slate-500 mt-1">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
               Ensure Ollama is running and accessible.
             </p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
               Model Name
             </label>
             <input
@@ -59,15 +111,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
               value={model}
               onChange={(e) => setModel(e.target.value)}
               placeholder="qwen3-vl:8b-instruct"
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all placeholder-slate-400 dark:placeholder-slate-500"
             />
-            <p className="text-xs text-slate-500 mt-1">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
               The vision model to use (e.g., qwen3-vl:8b-instruct, llava).
             </p>
           </div>
         </div>
 
-        <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end">
+        <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-800 flex justify-end">
           <button
             onClick={onClose}
             className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors"

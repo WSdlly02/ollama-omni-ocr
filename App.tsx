@@ -21,6 +21,9 @@ const App: React.FC = () => {
   const [style, setStyle] = useState<OcrStyle>(() => (localStorage.getItem('ocr_style') as OcrStyle) || OcrStyle.TEXT);
   const [mode, setMode] = useState<OcrMode>(() => (localStorage.getItem('ocr_mode') as OcrMode) || OcrMode.STRICT);
   const [inputMode, setInputMode] = useState<'upload' | 'handwriting'>(() => (localStorage.getItem('input_mode') as 'upload' | 'handwriting') || 'upload');
+  const [theme, setTheme] = useState<'system' | 'light' | 'dark'>(() => 
+    (localStorage.getItem('theme') as 'system' | 'light' | 'dark') || 'system'
+  );
 
   // Persist settings
   useEffect(() => {
@@ -29,7 +32,35 @@ const App: React.FC = () => {
     localStorage.setItem('ocr_style', style);
     localStorage.setItem('ocr_mode', mode);
     localStorage.setItem('input_mode', inputMode);
-  }, [baseUrl, model, style, mode, inputMode]);
+    localStorage.setItem('theme', theme);
+  }, [baseUrl, model, style, mode, inputMode, theme]);
+
+  // Apply theme
+  useEffect(() => {
+    const applyTheme = () => {
+      const isSystemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const isDark = theme === 'dark' || (theme === 'system' && isSystemDark);
+      
+      if (isDark) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    };
+    
+    applyTheme();
+    
+    // Listen for system changes
+    if (theme === 'system') {
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      const handler = () => applyTheme();
+      mediaQuery.addEventListener('change', handler);
+      return () => mediaQuery.removeEventListener('change', handler);
+    }
+  }, [theme]);
+
+  // Derived state for passing down
+  const isDarkMode = theme === 'dark' || (theme === 'system' && typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches);
 
   const handleRecognize = async () => {
     if (!file) return;
@@ -65,9 +96,9 @@ const App: React.FC = () => {
   }, []);
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 transition-colors duration-200">
       {/* Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
+      <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-50 transition-colors duration-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="bg-indigo-600 p-2 rounded-lg text-white">
@@ -79,13 +110,13 @@ const App: React.FC = () => {
                 <line x1="7" y1="12" x2="17" y2="12"/>
               </svg>
             </div>
-            <h1 className="text-xl font-bold tracking-tight text-slate-900">
+            <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">
               Ollama Omni-OCR
             </h1>
           </div>
           <button
             onClick={() => setIsSettingsOpen(true)}
-            className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-all"
+            className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-indigo-400 dark:hover:bg-slate-800 rounded-lg transition-all"
             title="Settings"
           >
             <Settings size={20} />
@@ -108,6 +139,7 @@ const App: React.FC = () => {
                 file={file}
                 setFile={handleFileChange}
                 isProcessing={isProcessing}
+                isDarkMode={isDarkMode}
               />
 
               {/* Action Button */}
@@ -118,7 +150,7 @@ const App: React.FC = () => {
                   className={`
                     w-full py-4 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-all transform
                     ${!file || isProcessing 
-                      ? 'bg-slate-200 text-slate-400 cursor-not-allowed' 
+                      ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed' 
                       : 'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-[0.98] shadow-indigo-500/20'
                     }
                   `}
@@ -140,8 +172,8 @@ const App: React.FC = () => {
               {/* 2. Options */}
               <section>
                 <div className="flex items-center gap-2 mb-4">
-                  <span className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-900 text-white text-xs font-bold">2</span>
-                  <h2 className="text-lg font-bold text-slate-800">Configuration</h2>
+                  <span className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-900 dark:bg-slate-700 text-white text-xs font-bold">2</span>
+                  <h2 className="text-lg font-bold text-slate-800 dark:text-white">Configuration</h2>
                 </div>
                 <div className="space-y-6">
                   <StyleSelector 
@@ -162,8 +194,8 @@ const App: React.FC = () => {
           {/* Right Column: Result */}
           <div className="w-full lg:w-7/12 flex flex-col">
              <div className="flex items-center gap-2 mb-4">
-                <span className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-900 text-white text-xs font-bold">3</span>
-                <h2 className="text-lg font-bold text-slate-800">Result</h2>
+                <span className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-900 dark:bg-slate-700 text-white text-xs font-bold">3</span>
+                <h2 className="text-lg font-bold text-slate-800 dark:text-white">Result</h2>
               </div>
             <div className="flex-grow">
               <ResultDisplay 
@@ -186,6 +218,8 @@ const App: React.FC = () => {
         setBaseUrl={setBaseUrl}
         model={model}
         setModel={setModel}
+        theme={theme}
+        setTheme={setTheme}
       />
     </div>
   );

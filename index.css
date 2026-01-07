@@ -1,1 +1,8 @@
 @import "tailwindcss";
+
+@theme {
+  --color-slate-950: #020617;
+}
+
+/* Force dark mode variant based on .dark class */
+@custom-variant dark (&:where(.dark, .dark *));

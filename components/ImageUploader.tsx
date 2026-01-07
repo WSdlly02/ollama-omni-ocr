@@ -101,28 +101,28 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({ file, setFile, disabled }
             flex flex-col items-center justify-center text-center cursor-pointer
             transition-all duration-300 min-h-[300px]
             ${isDragging 
-              ? 'border-indigo-500 bg-indigo-50' 
-              : 'border-slate-300 bg-slate-50 hover:bg-white hover:border-slate-400'
+              ? 'border-indigo-500 bg-indigo-50 dark:border-indigo-400 dark:bg-indigo-900/40' 
+              : 'border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 hover:bg-white dark:hover:bg-slate-800 hover:border-slate-400 dark:hover:border-slate-600'
             }
             ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
           `}
         >
-          <div className="bg-white p-4 rounded-full shadow-sm mb-4 group-hover:scale-110 transition-transform duration-300">
-            <Upload className="w-8 h-8 text-indigo-600" />
+          <div className="bg-white dark:bg-slate-700 p-4 rounded-full shadow-sm mb-4 group-hover:scale-110 transition-transform duration-300">
+            <Upload className="w-8 h-8 text-indigo-600 dark:text-indigo-400" />
           </div>
-          <h3 className="text-lg font-bold text-slate-700 mb-2">
+          <h3 className="text-lg font-bold text-slate-700 dark:text-slate-200 mb-2">
             Upload an Image
           </h3>
-          <p className="text-sm text-slate-500 max-w-xs mb-6">
+          <p className="text-sm text-slate-500 dark:text-slate-400 max-w-xs mb-6">
             Drag & drop, click to browse, or paste (Ctrl+V) from your clipboard.
           </p>
-          <div className="flex items-center gap-2 text-xs font-medium text-slate-400 bg-slate-100 px-3 py-1.5 rounded-full">
+          <div className="flex items-center gap-2 text-xs font-medium text-slate-400 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 px-3 py-1.5 rounded-full">
             <ClipboardPaste size={14} />
             <span>Paste supported</span>
           </div>
         </div>
       ) : (
-        <div className="relative rounded-2xl overflow-hidden border border-slate-200 shadow-sm bg-slate-900 group">
+        <div className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 shadow-sm bg-slate-900 group">
           <img 
             src={previewUrl || ''} 
             alt="Preview" 
@@ -133,7 +133,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({ file, setFile, disabled }
           <button
             onClick={clearImage}
             disabled={disabled}
-            className="absolute top-3 right-3 bg-white/90 hover:bg-red-50 text-slate-700 hover:text-red-600 p-2 rounded-full shadow-lg backdrop-blur-sm transition-all duration-200 opacity-0 group-hover:opacity-100 transform translate-y-2 group-hover:translate-y-0"
+            className="absolute top-3 right-3 bg-white/90 dark:bg-slate-800/90 hover:bg-red-50 dark:hover:bg-red-900/30 text-slate-700 dark:text-slate-200 hover:text-red-600 dark:hover:text-red-400 p-2 rounded-full shadow-lg backdrop-blur-sm transition-all duration-200 opacity-0 group-hover:opacity-100 transform translate-y-2 group-hover:translate-y-0"
             title="Remove Image"
           >
             <X size={20} />

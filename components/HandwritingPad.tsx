@@ -21,9 +21,10 @@ interface Stroke {
 interface HandwritingPadProps {
   onFileChange: (file: File | null) => void;
   disabled?: boolean;
+  isDarkMode?: boolean;
 }
 
-const HandwritingPad: React.FC<HandwritingPadProps> = ({ onFileChange, disabled }) => {
+const HandwritingPad: React.FC<HandwritingPadProps> = ({ onFileChange, disabled, isDarkMode = false }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   
@@ -38,7 +39,9 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({ onFileChange, disabled 
   const isDraggingRef = useRef(false);
   const lastPosRef = useRef<{ x: number, y: number } | null>(null);
   
-  const penColor = '#000000';
+  // Dynamic colors based on theme
+  const penColor = isDarkMode ? '#ffffff' : '#000000';
+  const bgColor = isDarkMode ? '#0f172a' : '#ffffff'; // slate-900 vs white
   const penWidth = 2;
   const eraserRadius = 4;
 
@@ -102,7 +105,9 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({ onFileChange, disabled 
     // Clear in screen space
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#ffffff';
+    
+    // Background color based on theme
+    ctx.fillStyle = bgColor;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
     // Apply view transform
@@ -110,36 +115,44 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({ onFileChange, disabled 
     ctx.translate(viewOffset.x, viewOffset.y);
     
     // Draw strokes
-    currentStrokes.forEach(s => drawStroke(ctx, s));
-
-    if (activeStroke && tool === 'pen') {
-      drawStroke(ctx, activeStroke);
-    }
+    [...currentStrokes, ...(activeStroke && tool === 'pen' ? [activeStroke] : [])].forEach(s => {
+      // Recalculate color based on theme
+      const isStandardColor = s.color === '#000000' || s.color === '#ffffff';
+      const sClone = { ...s };
+      if (isStandardColor) {
+        sClone.color = penColor;
+      }
+      drawStroke(ctx, sClone);
+    });
     
     ctx.restore();
-  }, [currentStrokes, activeStroke, tool, viewOffset]);
+  }, [currentStrokes, activeStroke, tool, viewOffset, bgColor, penColor]);
 
   // Export to App state
   const exportImage = useCallback(() => {
-     if (currentStrokes.length === 0 && !activeStroke) {
+     // NOTE: We always export as BLACK INK on WHITE BACKGROUND for OCR
+     // regardless of display theme.
+     
+     const allStrokes = [...currentStrokes];
+     if (activeStroke) allStrokes.push(activeStroke);
+
+     if (allStrokes.length === 0) {
          onFileChange(null);
          return;
      }
 
-     // Calculate bounding box of all strokes
-     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-     
-     const allStrokes = [...currentStrokes, ...(activeStroke ? [activeStroke] : [])];
+     // Calc bounds
+     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
      
      allStrokes.forEach(s => {
-         minX = Math.min(minX, s.minX);
-         minY = Math.min(minY, s.minY);
-         maxX = Math.max(maxX, s.maxX);
-         maxY = Math.max(maxY, s.maxY);
+       if (s.minX < minX) minX = s.minX;
+       if (s.maxX > maxX) maxX = s.maxX;
+       if (s.minY < minY) minY = s.minY;
+       if (s.maxY > maxY) maxY = s.maxY;
      });
-
+     
      // Add padding
-     const padding = 20;
+     const padding = 50;
      minX -= padding;
      minY -= padding;
      maxX += padding;
@@ -156,13 +169,17 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({ onFileChange, disabled 
      
      if (!tCtx) return;
 
+     // OCR PREFERENCE: White background, Black text
      tCtx.fillStyle = '#ffffff';
      tCtx.fillRect(0, 0, width, height);
      
      // Translate so content fits in 0,0
      tCtx.translate(-minX, -minY);
      
-     allStrokes.forEach(s => drawStroke(tCtx, s));
+     // Force black ink for export
+     const exportStrokes = allStrokes.map(s => ({ ...s, color: '#000000' }));
+     
+     exportStrokes.forEach(s => drawStroke(tCtx, s));
      
      tempCanvas.toBlob((blob) => {
          if (blob) {
@@ -240,7 +257,7 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({ onFileChange, disabled 
       setActiveStroke({
         points: [point],
         tool: 'pen',
-        color: penColor,
+        color: penColor, // Use dynamic color so new stroke inherits theme
         width: penWidth,
         minX: point.x, maxX: point.x,
         minY: point.y, maxY: point.y
@@ -400,7 +417,7 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({ onFileChange, disabled 
     <div 
       ref={containerRef}
       className={`
-        flex flex-col bg-white border border-slate-200 shadow-sm
+        flex flex-col bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm
         transition-all duration-300 select-none
         ${isFullscreen 
             ? 'fixed inset-0 z-[9999] h-screen w-screen' 
@@ -409,42 +426,48 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({ onFileChange, disabled 
       style={isFullscreen ? { top: 0, left: 0 } : {}}
     >
       {/* Toolbar */}
-      <div className="flex items-center justify-between p-2 sm:p-3 border-b border-slate-100 bg-slate-50/95 backdrop-blur-sm z-10 transition-opacity">
+      <div className="flex items-center justify-between p-2 sm:p-3 border-b border-slate-100 dark:border-slate-700 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur-sm z-10 transition-opacity">
         <div className="flex items-center space-x-1 sm:space-x-2">
           {/* Tools */}
-          <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
+          <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700">
              <button
               onClick={() => setTool('hand')}
-              className={`p-1.5 sm:p-2 rounded-md transition-all ${tool === 'hand' ? 'bg-white text-indigo-600 shadow-sm ring-1 ring-black/5' : 'text-slate-500 hover:text-slate-700'}`}
+              className={`p-1.5 sm:p-2 rounded-md transition-all ${tool === 'hand' 
+                ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm ring-1 ring-black/5 dark:ring-white/10' 
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
               title="Pan Tool (Drag to move)"
             >
               <Hand className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
-            <div className="w-px h-4 bg-slate-300 mx-0.5 my-auto" />
+            <div className="w-px h-4 bg-slate-300 dark:bg-slate-700 mx-0.5 my-auto" />
             <button
               onClick={() => setTool('pen')}
-              className={`p-1.5 sm:p-2 rounded-md transition-all ${tool === 'pen' ? 'bg-white text-indigo-600 shadow-sm ring-1 ring-black/5' : 'text-slate-500 hover:text-slate-700'}`}
+              className={`p-1.5 sm:p-2 rounded-md transition-all ${tool === 'pen' 
+                ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm ring-1 ring-black/5 dark:ring-white/10' 
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
               title="Pen"
             >
               <Pen className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
             <button
               onClick={() => setTool('eraser')}
-              className={`p-1.5 sm:p-2 rounded-md transition-all ${tool === 'eraser' ? 'bg-white text-indigo-600 shadow-sm ring-1 ring-black/5' : 'text-slate-500 hover:text-slate-700'}`}
+              className={`p-1.5 sm:p-2 rounded-md transition-all ${tool === 'eraser' 
+                ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm ring-1 ring-black/5 dark:ring-white/10' 
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
               title="Object Eraser"
             >
               <Eraser className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
           </div>
 
-          <div className="w-px h-6 bg-slate-300 mx-1" />
+          <div className="w-px h-6 bg-slate-300 dark:bg-slate-700 mx-1" />
 
           {/* History */}
           <div className="flex space-x-1">
             <button
               onClick={handleUndo}
               disabled={currentStep === 0}
-              className="p-1.5 sm:p-2 rounded-lg text-slate-500 hover:bg-slate-100 disabled:opacity-30 transition-colors"
+              className="p-1.5 sm:p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 transition-colors"
               title="Undo"
             >
               <Undo className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -452,7 +475,7 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({ onFileChange, disabled 
             <button
               onClick={handleRedo}
               disabled={currentStep === history.length - 1}
-              className="p-1.5 sm:p-2 rounded-lg text-slate-500 hover:bg-slate-100 disabled:opacity-30 transition-colors"
+              className="p-1.5 sm:p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 transition-colors"
               title="Redo"
             >
               <Redo className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -464,14 +487,14 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({ onFileChange, disabled 
             <button
                 onClick={handleClear}
                 disabled={currentStrokes.length === 0}
-                className="p-1.5 sm:p-2 rounded-lg text-slate-500 hover:text-red-600 hover:bg-red-50 transition-colors"
+                className="p-1.5 sm:p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
                 title="Clear Canvas"
             >
                 <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
            <button
              onClick={() => setIsFullscreen(!isFullscreen)}
-             className="p-1.5 sm:p-2 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors"
+             className="p-1.5 sm:p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
              title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
            >
              {isFullscreen ? <Minimize2 className="w-4 h-4 sm:w-5 sm:h-5" /> : <Maximize2 className="w-4 h-4 sm:w-5 sm:h-5" />}
@@ -479,7 +502,7 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({ onFileChange, disabled 
         </div>
       </div>
 
-      {/* Canvas Area */}
+      {/* Canvas Area - Keep background white for ink contrast */}
       <div className={`relative flex-1 bg-white overflow-hidden touch-none ${tool === 'hand' ? (isDraggingRef.current ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-crosshair'}`}>
         <canvas
           ref={canvasRef}
@@ -494,9 +517,9 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({ onFileChange, disabled 
         {/* Empty State Hint */}
         {currentStrokes.length === 0 && !activeStroke && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="text-center opacity-30">
+            <div className="text-center opacity-30 select-none">
                 <Pen className="w-12 h-12 mx-auto mb-2 text-slate-400" />
-                <span className="text-slate-400 text-xl font-medium select-none">Write notes here...</span>
+                <span className="text-slate-400 text-xl font-medium">Write notes here...</span>
             </div>
           </div>
         )}
@@ -507,14 +530,14 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({ onFileChange, disabled 
   if (isFullscreen) {
       return (
           <>
-            <div className="h-[300px] w-full bg-slate-50 border border-slate-200 border-dashed rounded-2xl flex flex-col items-center justify-center gap-3 transition-all">
-                <div className="p-3 bg-white rounded-full shadow-sm">
-                    <Maximize2 className="w-6 h-6 text-slate-400" />
+            <div className="h-[300px] w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 border-dashed rounded-2xl flex flex-col items-center justify-center gap-3 transition-all">
+                <div className="p-3 bg-white dark:bg-slate-800 rounded-full shadow-sm">
+                    <Maximize2 className="w-6 h-6 text-slate-400 dark:text-slate-500" />
                 </div>
-                <span className="text-slate-500 font-medium text-sm">Editing in fullscreen mode</span>
+                <span className="text-slate-500 dark:text-slate-400 font-medium text-sm">Editing in fullscreen mode</span>
                 <button 
                     onClick={() => setIsFullscreen(false)}
-                    className="text-xs text-indigo-600 hover:text-indigo-700 font-medium hover:underline"
+                    className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-medium hover:underline"
                 >
                     Return to view
                 </button>
