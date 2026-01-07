@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Pen, Eraser, Undo, Redo, Trash2, Maximize2, Minimize2 } from 'lucide-react';
+import { Pen, Eraser, Undo, Redo, Trash2, Maximize2, Minimize2, Hand } from 'lucide-react';
 
 interface Point {
   x: number;
@@ -32,13 +32,15 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({ onFileChange, disabled 
   const currentStrokes = history[currentStep];
   
   const [activeStroke, setActiveStroke] = useState<Stroke | null>(null);
-  const [tool, setTool] = useState<'pen' | 'eraser'>('pen');
+  const [tool, setTool] = useState<'pen' | 'eraser' | 'hand'>('pen');
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [viewOffset, setViewOffset] = useState({ x: 0, y: 0 });
+  const isDraggingRef = useRef(false);
+  const lastPosRef = useRef<{ x: number, y: number } | null>(null);
   
   const penColor = '#000000';
-  const penWidth = 3;
-  // Eraser radius reduced to be more consistent with visual precision
-  const eraserRadius = 5;
+  const penWidth = 2;
+  const eraserRadius = 4;
 
   // --- Helpers ---
   const getCoordinates = (e: React.PointerEvent | PointerEvent | React.MouseEvent | React.TouchEvent): Point | null => {
@@ -97,30 +99,72 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({ onFileChange, disabled 
 
     const dpr = window.devicePixelRatio || 1;
     ctx.save();
+    // Clear in screen space
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.restore();
-
+    
+    // Apply view transform
+    ctx.scale(dpr, dpr); // Restore DPR scaling
+    ctx.translate(viewOffset.x, viewOffset.y);
+    
+    // Draw strokes
     currentStrokes.forEach(s => drawStroke(ctx, s));
 
     if (activeStroke && tool === 'pen') {
       drawStroke(ctx, activeStroke);
     }
-  }, [currentStrokes, activeStroke, tool]);
+    
+    ctx.restore();
+  }, [currentStrokes, activeStroke, tool, viewOffset]);
 
   // Export to App state
   const exportImage = useCallback(() => {
-     const canvas = canvasRef.current;
-     if (!canvas) return;
-     
      if (currentStrokes.length === 0 && !activeStroke) {
          onFileChange(null);
          return;
      }
 
-     canvas.toBlob((blob) => {
+     // Calculate bounding box of all strokes
+     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+     
+     const allStrokes = [...currentStrokes, ...(activeStroke ? [activeStroke] : [])];
+     
+     allStrokes.forEach(s => {
+         minX = Math.min(minX, s.minX);
+         minY = Math.min(minY, s.minY);
+         maxX = Math.max(maxX, s.maxX);
+         maxY = Math.max(maxY, s.maxY);
+     });
+
+     // Add padding
+     const padding = 20;
+     minX -= padding;
+     minY -= padding;
+     maxX += padding;
+     maxY += padding;
+     
+     const width = Math.max(100, maxX - minX);
+     const height = Math.max(100, maxY - minY);
+
+     // Create temp canvas
+     const tempCanvas = document.createElement('canvas');
+     tempCanvas.width = width;
+     tempCanvas.height = height;
+     const tCtx = tempCanvas.getContext('2d');
+     
+     if (!tCtx) return;
+
+     tCtx.fillStyle = '#ffffff';
+     tCtx.fillRect(0, 0, width, height);
+     
+     // Translate so content fits in 0,0
+     tCtx.translate(-minX, -minY);
+     
+     allStrokes.forEach(s => drawStroke(tCtx, s));
+     
+     tempCanvas.toBlob((blob) => {
          if (blob) {
              const file = new File([blob], "handwriting.jpg", { type: "image/jpeg" });
              onFileChange(file);
@@ -174,8 +218,23 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({ onFileChange, disabled 
     e.currentTarget.setPointerCapture(e.pointerId);
     if (disabled) return;
     
-    const point = getCoordinates(e);
-    if (!point) return;
+    if (tool === 'hand') {
+        isDraggingRef.current = true;
+        const domPoint = getCoordinates(e); // DOM coords
+        if (domPoint) {
+            lastPosRef.current = domPoint;
+        }
+        return;
+    }
+
+    const domPoint = getCoordinates(e);
+    if (!domPoint) return;
+    
+    // Transform to world space
+    const point = {
+        x: domPoint.x - viewOffset.x,
+        y: domPoint.y - viewOffset.y
+    };
 
     if (tool === 'pen') {
       setActiveStroke({
@@ -198,6 +257,24 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({ onFileChange, disabled 
     if (disabled) return;
     if (!e.buttons) return;
 
+    const domPoint = getCoordinates(e);
+    if (!domPoint) return;
+
+    if (tool === 'hand') {
+       if (isDraggingRef.current && lastPosRef.current) {
+           const dx = domPoint.x - lastPosRef.current.x;
+           const dy = domPoint.y - lastPosRef.current.y;
+           
+           setViewOffset(prev => ({
+               x: prev.x + dx,
+               y: prev.y + dy
+           }));
+           
+           lastPosRef.current = domPoint;
+       }
+       return;
+    }
+
     // Use getCoalescedEvents for higher precision if available
     const events = (e.nativeEvent instanceof PointerEvent && 'getCoalescedEvents' in e.nativeEvent) 
       ? e.nativeEvent.getCoalescedEvents() 
@@ -211,14 +288,19 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({ onFileChange, disabled 
         let { minX, maxX, minY, maxY } = prev;
 
         events.forEach(event => {
-            const point = getCoordinates(event);
-            if (!point) return;
+            const dp = getCoordinates(event);
+            if (!dp) return;
             
-            // Simple distance filter to reduce noise (0.5px)
+            // Transform to world space for storage
+            const point = {
+                x: dp.x - viewOffset.x,
+                y: dp.y - viewOffset.y
+            };
+            
+            // Simple distance filter to reduce noise (0.1px)
             const lastPoint = newPoints[newPoints.length - 1];
             if (lastPoint) {
                 const dist = Math.hypot(point.x - lastPoint.x, point.y - lastPoint.y);
-                // Reduce standard threshold to capturing fine detail
                 if (dist < 0.1) return; 
             }
 
@@ -236,35 +318,28 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({ onFileChange, disabled 
         };
       });
     } else if (tool === 'eraser') {
-      // Eraser doesn't need high frequency updates, just the latest position is fine usually,
-      // but consistent logic doesn't hurt.
-      events.forEach(event => {
-          const point = getCoordinates(event);
-          if (point) {
-             // We can't batch state updates purely functionally easily here because 
-             // checkEraserHit depends on currentStrokes which doesn't change *inside* this loop.
-             // But for eraser, we generally just care about the "current" position. 
-             // Using the last event is usually sufficient for UI feedback, 
-             // but to erase effectively we should check all points.
-             // However, React state updates are async. 
-             // Let's just use the final event to trigger the erase check to avoid complexity/lag.
-             // Or better: compute the "swept area"? No, simple Point check is fine for now.
-          }
-      });
       // Just consider the latest point for eraser to avoid lag
-      const point = getCoordinates(e);
-      if (point) {
-          const remaining = checkEraserHit(point.x, point.y, currentStrokes);
-          if (remaining.length !== currentStrokes.length) {
-            commitHistory(remaining); 
-          }
+      // Transform to world space
+      const point = {
+          x: domPoint.x - viewOffset.x,
+          y: domPoint.y - viewOffset.y
+      };
+      
+      const remaining = checkEraserHit(point.x, point.y, currentStrokes);
+      if (remaining.length !== currentStrokes.length) {
+        commitHistory(remaining); 
       }
     }
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
     e.currentTarget.releasePointerCapture(e.pointerId);
-    if (tool === 'pen' && activeStroke) {
+    
+    if (tool === 'hand') {
+        isDraggingRef.current = false;
+        lastPosRef.current = null;
+    } 
+    else if (tool === 'pen' && activeStroke) {
       commitHistory([...currentStrokes, activeStroke]);
       setActiveStroke(null);
     }
@@ -338,6 +413,14 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({ onFileChange, disabled 
         <div className="flex items-center space-x-1 sm:space-x-2">
           {/* Tools */}
           <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
+             <button
+              onClick={() => setTool('hand')}
+              className={`p-1.5 sm:p-2 rounded-md transition-all ${tool === 'hand' ? 'bg-white text-indigo-600 shadow-sm ring-1 ring-black/5' : 'text-slate-500 hover:text-slate-700'}`}
+              title="Pan Tool (Drag to move)"
+            >
+              <Hand className="w-4 h-4 sm:w-5 sm:h-5" />
+            </button>
+            <div className="w-px h-4 bg-slate-300 mx-0.5 my-auto" />
             <button
               onClick={() => setTool('pen')}
               className={`p-1.5 sm:p-2 rounded-md transition-all ${tool === 'pen' ? 'bg-white text-indigo-600 shadow-sm ring-1 ring-black/5' : 'text-slate-500 hover:text-slate-700'}`}
@@ -397,7 +480,7 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({ onFileChange, disabled 
       </div>
 
       {/* Canvas Area */}
-      <div className="relative flex-1 bg-white cursor-crosshair overflow-hidden touch-none">
+      <div className={`relative flex-1 bg-white overflow-hidden touch-none ${tool === 'hand' ? (isDraggingRef.current ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-crosshair'}`}>
         <canvas
           ref={canvasRef}
           onPointerDown={handlePointerDown}
