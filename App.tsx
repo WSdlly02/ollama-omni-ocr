@@ -24,6 +24,9 @@ const App: React.FC = () => {
   const [theme, setTheme] = useState<'system' | 'light' | 'dark'>(() => 
     (localStorage.getItem('theme') as 'system' | 'light' | 'dark') || 'system'
   );
+  const [systemPreferDark, setSystemPreferDark] = useState(() => 
+    typeof window !== 'undefined' ? window.matchMedia('(prefers-color-scheme: dark)').matches : false
+  );
 
   // Persist settings
   useEffect(() => {
@@ -35,32 +38,25 @@ const App: React.FC = () => {
     localStorage.setItem('theme', theme);
   }, [baseUrl, model, style, mode, inputMode, theme]);
 
-  // Apply theme
+  // Listen for system theme changes
   useEffect(() => {
-    const applyTheme = () => {
-      const isSystemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      const isDark = theme === 'dark' || (theme === 'system' && isSystemDark);
-      
-      if (isDark) {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-      }
-    };
-    
-    applyTheme();
-    
-    // Listen for system changes
-    if (theme === 'system') {
-      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-      const handler = () => applyTheme();
-      mediaQuery.addEventListener('change', handler);
-      return () => mediaQuery.removeEventListener('change', handler);
-    }
-  }, [theme]);
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = (e: MediaQueryListEvent) => setSystemPreferDark(e.matches);
+    mediaQuery.addEventListener('change', handler);
+    return () => mediaQuery.removeEventListener('change', handler);
+  }, []);
 
-  // Derived state for passing down
-  const isDarkMode = theme === 'dark' || (theme === 'system' && typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  // Derived dark mode state
+  const isDarkMode = theme === 'dark' || (theme === 'system' && systemPreferDark);
+
+  // Apply theme class
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [isDarkMode]);
 
   const handleRecognize = async () => {
     if (!file) return;

@@ -58,7 +58,13 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, isLoading, error,
       <div className="h-full min-h-[400px] flex flex-col items-center justify-center p-8 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700">
         <div className="relative w-16 h-16 mb-6">
             <div className="absolute top-0 left-0 w-full h-full border-4 border-indigo-100 dark:border-indigo-900/30 rounded-full"></div>
-            <div className="absolute top-0 left-0 w-full h-full border-4 border-indigo-600 dark:border-indigo-500 rounded-full border-t-transparent animate-spin"></div>
+            <div
+              className={
+                `absolute top-0 left-0 w-full h-full border-4 rounded-full animate-spin
+                 border-t-transparent border-r-indigo-600 border-b-indigo-600 border-l-indigo-600
+                 dark:border-r-indigo-500 dark:border-b-indigo-500 dark:border-l-indigo-500`
+              }
+            />
         </div>
         <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-1">Analyzing Image...</h3>
         <p className="text-slate-500 dark:text-slate-400 animate-pulse">Detecting content and formatting</p>
