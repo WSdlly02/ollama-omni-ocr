@@ -1,8 +1,8 @@
 @import "tailwindcss";
+@config "./tailwind.config.js";
 
-@theme {
-  --color-slate-950: #020617;
+@layer base {
+  html {
+    overflow-y: scroll;
+  }
 }
-
-/* Force dark mode variant based on .dark class */
-@custom-variant dark (&:where(.dark, .dark *));

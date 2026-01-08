@@ -125,7 +125,7 @@ const App: React.FC = () => {
         <div className="flex flex-col lg:flex-row gap-8">
           
           {/* Left Column: Input & Controls */}
-          <div className="w-full lg:w-5/12 lg:h-[calc(100vh-8rem)] lg:sticky lg:top-24 flex flex-col">
+          <div className="w-full lg:w-5/12 lg:h-[calc(100vh-8rem)] lg:sticky lg:top-24 flex flex-col min-w-0">
             <div className="flex-grow overflow-y-auto pr-2 space-y-8 pb-4 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
               
               {/* 1. Upload / Handwriting (Managed by InputPanel) */}

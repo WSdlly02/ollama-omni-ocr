@@ -97,9 +97,9 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({ file, setFile, disabled }
           onDragLeave={onDragLeave}
           onDrop={onDrop}
           className={`
-            group relative border-2 border-dashed rounded-2xl p-10 
+            group relative border border-dashed rounded-2xl p-10 
             flex flex-col items-center justify-center text-center cursor-pointer
-            transition-all duration-300 min-h-[300px]
+            transition-all duration-300 h-[300px] w-full max-w-full
             ${isDragging 
               ? 'border-indigo-500 bg-indigo-50 dark:border-indigo-400 dark:bg-indigo-900/40' 
               : 'border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 hover:bg-white dark:hover:bg-slate-800 hover:border-slate-400 dark:hover:border-slate-600'
