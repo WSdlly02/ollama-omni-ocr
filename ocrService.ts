@@ -109,39 +109,15 @@ export const performOCR = async (
       let displayText = fullText
         .replace(/<think>[\s\S]*?<\/think>/g, "")
         .trimStart();
-
-      // Real-time filtering of markdown code blocks
-      // If the text starts with ```, we try to strip the first line (language identifier)
-      // and the last line (closing backticks) if they exist.
-      if (displayText.startsWith("```")) {
-        const firstLineBreak = displayText.indexOf("\n");
-        if (firstLineBreak !== -1) {
-          // We have the full first line, so we can strip it
-          displayText = displayText.substring(firstLineBreak + 1);
-        } else {
-          // We are still receiving the first line (e.g. "```markd"), so show nothing yet
-          displayText = "";
-        }
-      }
-
-      // Remove trailing backticks if they look like a closing block
-      displayText = displayText.replace(/```+$/, "").trimEnd();
-
+      
       if (onUpdate) {
         onUpdate(displayText);
       }
     }
 
     // Final cleanup
+    // Removed code block stripping. Only stripping think tags.
     let cleanText = fullText.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
-    if (cleanText.startsWith("```") && cleanText.endsWith("```")) {
-      const firstLineBreak = cleanText.indexOf("\n");
-      if (firstLineBreak !== -1) {
-        cleanText = cleanText
-          .substring(firstLineBreak + 1, cleanText.length - 3)
-          .trim();
-      }
-    }
 
     return cleanText;
   } catch (error) {

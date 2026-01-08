@@ -1,3 +1,5 @@
+import typography from '@tailwindcss/typography';
+
 export default {
   darkMode: 'selector',
   content: [
@@ -7,5 +9,7 @@ export default {
   theme: {
     extend: {},
   },
-  plugins: [],
+  plugins: [
+    typography,
+  ],
 }

@@ -188,7 +188,7 @@ const App: React.FC = () => {
           </div>
 
           {/* Right Column: Result */}
-          <div className="w-full lg:w-7/12 flex flex-col">
+          <div className="w-full lg:w-7/12 flex flex-col min-w-0">
              <div className="flex items-center gap-2 mb-4">
                 <span className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-900 dark:bg-slate-700 text-white text-xs font-bold">3</span>
                 <h2 className="text-lg font-bold text-slate-800 dark:text-white">Result</h2>
@@ -200,6 +200,7 @@ const App: React.FC = () => {
                 error={error} 
                 onRetry={handleRecognize}
                 selectedStyle={style}
+                isDarkMode={isDarkMode}
               />
             </div>
           </div>

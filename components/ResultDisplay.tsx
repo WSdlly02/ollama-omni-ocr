@@ -1,5 +1,13 @@
 import React, { useState } from 'react';
-import { Copy, Check, Download, RefreshCw, AlertCircle } from 'lucide-react';
+import { Copy, Check, Download, RefreshCw, AlertCircle, FileText, Eye } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import remarkGfm from 'remark-gfm';
+import 'katex/dist/katex.min.css';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import SegmentedControl from './SegmentedControl';
 import { OcrStyle } from '../types';
 
 interface ResultDisplayProps {
@@ -8,14 +16,22 @@ interface ResultDisplayProps {
   error: string | null;
   onRetry: () => void;
   selectedStyle: OcrStyle;
+  isDarkMode: boolean;
 }
 
-const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, isLoading, error, onRetry, selectedStyle }) => {
+const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, isLoading, error, onRetry, selectedStyle, isDarkMode }) => {
   const [copied, setCopied] = useState(false);
+  const [viewMode, setViewMode] = useState<'raw' | 'preview'>('preview');
 
   const handleCopy = () => {
     if (result) {
-      navigator.clipboard.writeText(result);
+      // Strip markdown code fences (```language ... ```) for clean copying
+      const cleanText = result
+        .replace(/^```[\w-]*\n/gm, '') // Remove opening fence (e.g., ```json)
+        .replace(/```$/gm, '')          // Remove closing fence
+        .trim();                        // Trim extra whitespace
+
+      navigator.clipboard.writeText(cleanText);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
@@ -97,19 +113,36 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, isLoading, error,
   return (
     <div className="flex flex-col h-full bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-            Recognition Result
-          </span>
-          {isLoading && (
-            <div className="flex items-center gap-1.5">
-              <div className="w-1.5 h-1.5 bg-indigo-600 dark:bg-indigo-400 rounded-full animate-pulse"></div>
-              <span className="text-[10px] font-medium text-indigo-600 dark:text-indigo-400 uppercase tracking-tight animate-pulse">
-                Streaming...
-              </span>
-            </div>
-          )}
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider hidden sm:block">
+              Recognition Result
+            </span>
+            {isLoading && (
+              <div className="flex items-center gap-1.5">
+                <div className="w-1.5 h-1.5 bg-indigo-600 dark:bg-indigo-400 rounded-full animate-pulse"></div>
+                <span className="text-[10px] font-medium text-indigo-600 dark:text-indigo-400 uppercase tracking-tight animate-pulse">
+                  Streaming...
+                </span>
+              </div>
+            )}
+          </div>
+          
+          {/* View Mode Toggle */}
+          <div style={{ width: 180 }}>
+            <SegmentedControl
+              name="view-mode"
+              value={viewMode}
+              onChange={(val) => setViewMode(val as 'raw' | 'preview')}
+              options={[
+                { value: 'preview', label: 'Preview', icon: Eye },
+                { value: 'raw', label: 'Raw', icon: FileText },
+              ]}
+              size="sm"
+            />
+          </div>
         </div>
+
         <div className="flex items-center gap-2">
           <button
             onClick={handleDownload}
@@ -131,13 +164,72 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, isLoading, error,
           </button>
         </div>
       </div>
-      <div className="flex-grow relative">
-        <textarea
-          readOnly
-          value={result}
-          className="w-full h-full min-h-[400px] p-4 text-sm font-mono text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 resize-none focus:outline-none"
-          spellCheck={false}
-        />
+      <div className="flex-grow relative overflow-auto">
+        {viewMode === 'raw' ? (
+          <textarea
+            readOnly
+            value={result}
+            className="w-full h-full min-h-[400px] p-4 text-sm font-mono text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 resize-none focus:outline-none"
+            spellCheck={false}
+          />
+        ) : (
+          <div className="w-full h-full min-h-[400px] p-6 bg-white dark:bg-slate-800">
+             <article className="prose prose-slate dark:prose-invert max-w-none prose-sm sm:prose-base
+               prose-headings:font-bold prose-h1:text-2xl prose-h2:text-xl
+               prose-a:text-indigo-600 dark:prose-a:text-indigo-400
+               prose-img:rounded-xl">
+              <ReactMarkdown 
+                remarkPlugins={[remarkMath, remarkGfm]} 
+                rehypePlugins={[rehypeKatex]}
+                components={{
+                  // Override pre to avoid prose styling conflict (double background/border)
+                  pre({ node, children, ...props }: any) {
+                    return <div {...props} className="not-prose my-4 w-full overflow-x-auto">{children}</div>;
+                  },
+                  code({node, inline, className, children, ...props}: any) {
+                    const match = /language-(\w+)/.exec(className || '')
+                    return !inline && match ? (
+                      <SyntaxHighlighter
+                        {...props}
+                        style={isDarkMode ? oneDark : oneLight}
+                        language={match[1]}
+                        PreTag="div"
+                        customStyle={{
+                          margin: 0,
+                          borderRadius: '0.5rem',
+                          // Ensure background is solid to cover any prose artifacts, but consistent
+                          background: isDarkMode ? '#1e293b' : '#f8fafc',
+                          border: isDarkMode ? '1px solid #334155' : '1px solid #e2e8f0',
+                          // Fix overflow
+                          maxWidth: '100%',
+                          overflowX: 'auto',
+                        }}
+                        codeTagProps={{
+                          style: {
+                            // Prevent "black blocks" by ensuring transparent background on text
+                            backgroundColor: 'transparent', 
+                            fontFamily: 'inherit'
+                          }
+                        }}
+                      >
+                        {String(children).replace(/\n$/, '')}
+                      </SyntaxHighlighter>
+                    ) : (
+                      <code {...props} className={className}>
+                        {children}
+                      </code>
+                    )
+                  }
+                }}
+              >
+                {/* Ensure JSON results are treated as code if selectedStyle is JSON, preventing "text blob" issues */}
+                {selectedStyle === 'json' && !result?.trim().startsWith('```') 
+                  ? `\`\`\`json\n${result}\n\`\`\`` 
+                  : result}
+              </ReactMarkdown>
+             </article>
+          </div>
+        )}
       </div>
     </div>
   );
