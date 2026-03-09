@@ -6,3 +6,8 @@
     overflow-y: scroll;
   }
 }
+
+@keyframes flash {
+  0% { opacity: 0.9; }
+  100% { opacity: 0; }
+}

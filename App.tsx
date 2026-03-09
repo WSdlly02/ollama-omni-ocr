@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Sparkles, Settings } from 'lucide-react';
 import { OcrStyle, OcrMode } from './types';
-import InputPanel from './components/InputPanel';
+import InputPanel, { type InputMode } from './components/InputPanel';
 import StyleSelector from './components/StyleSelector';
 import ModeSelector from './components/ModeSelector';
 import ResultDisplay from './components/ResultDisplay';
@@ -20,7 +20,7 @@ const App: React.FC = () => {
   const [model, setModel] = useState(() => localStorage.getItem('ollama_model') || 'qwen3-vl:8b-instruct');
   const [style, setStyle] = useState<OcrStyle>(() => (localStorage.getItem('ocr_style') as OcrStyle) || OcrStyle.TEXT);
   const [mode, setMode] = useState<OcrMode>(() => (localStorage.getItem('ocr_mode') as OcrMode) || OcrMode.STRICT);
-  const [inputMode, setInputMode] = useState<'upload' | 'handwriting'>(() => (localStorage.getItem('input_mode') as 'upload' | 'handwriting') || 'upload');
+  const [inputMode, setInputMode] = useState<InputMode>(() => (localStorage.getItem('input_mode') as InputMode) || 'upload');
   const [theme, setTheme] = useState<'system' | 'light' | 'dark'>(() => 
     (localStorage.getItem('theme') as 'system' | 'light' | 'dark') || 'system'
   );

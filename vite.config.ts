@@ -1,6 +1,7 @@
 import path from "path";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import basicSsl from "@vitejs/plugin-basic-ssl";
 
 export default defineConfig(() => {
   return {
@@ -15,7 +16,7 @@ export default defineConfig(() => {
         },
       },
     },
-    plugins: [react()],
+    plugins: [react(), basicSsl()],
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "."),
@@ -26,8 +27,17 @@ export default defineConfig(() => {
         output: {
           manualChunks: {
             vendor: ["react", "react-dom"],
+            motion: ["framer-motion"],
             openai: ["openai"],
             icons: ["lucide-react"],
+            markdown: [
+              "react-markdown",
+              "remark-gfm",
+              "remark-math",
+              "rehype-katex",
+            ],
+            katex: ["katex"],
+            syntax: ["react-syntax-highlighter"],
           },
         },
       },
