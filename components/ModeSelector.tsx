@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { OcrMode } from '../types';
-import { ShieldCheck, Sparkles } from 'lucide-react';
+import { ShieldCheck, Sparkles, BrainCircuit } from 'lucide-react';
 
 interface ModeSelectorProps {
   mode: OcrMode;
@@ -22,6 +22,12 @@ const ModeSelector: React.FC<ModeSelectorProps> = ({ mode, setMode, disabled }) 
       label: 'Enhance',
       description: 'Fixes errors & ignores watermarks.',
       icon: Sparkles
+    },
+    {
+      id: OcrMode.SOLVER,
+      label: 'Solver',
+      description: 'Transcribes then solves problems.',
+      icon: BrainCircuit
     }
   ];
 
@@ -31,7 +37,7 @@ const ModeSelector: React.FC<ModeSelectorProps> = ({ mode, setMode, disabled }) 
         Recognition Mode
       </h3>
       
-      <div className="grid grid-cols-2 gap-2 bg-slate-100 dark:bg-slate-800 p-1.5 rounded-xl border border-slate-200 dark:border-slate-700">
+      <div className="grid grid-cols-3 gap-2 bg-slate-100 dark:bg-slate-800 p-1.5 rounded-xl border border-slate-200 dark:border-slate-700">
         {options.map((option) => {
           const isSelected = mode === option.id;
           const IconComponent = option.icon;

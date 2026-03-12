@@ -5,6 +5,7 @@ import { STYLE_PROMPTS, MODE_PROMPTS } from "./constants";
 const MODE_PARAMS = {
   [OcrMode.STRICT]: {
     temperature: 0.1,
+    max_tokens: 16384,
     extra_body: {
       think: false,
       options: {
@@ -19,6 +20,7 @@ const MODE_PARAMS = {
   },
   [OcrMode.ENHANCE]: {
     temperature: 0.7,
+    max_tokens: 16384,
     extra_body: {
       think: false,
       options: {
@@ -28,6 +30,21 @@ const MODE_PARAMS = {
         top_k: 40,
         top_p: 0.9,
         min_p: 0.05,
+      },
+    },
+  },
+  [OcrMode.SOLVER]: {
+    temperature: 0.6,
+    max_tokens: 32768,
+    extra_body: {
+      think: true, // enable chain-of-thought for problem solving
+      options: {
+        seed: undefined,
+        num_ctx: 32768,
+        repeat_penalty: 1.05,
+        top_k: 50,
+        top_p: 0.95,
+        min_p: 0.02,
       },
     },
   },
@@ -58,7 +75,7 @@ export const performOCR = async (
   model: string = "qwen3-vl:8b-instruct",
   style: OcrStyle,
   mode: OcrMode,
-  onUpdate?: (text: string) => void
+  onUpdate?: (text: string) => void,
 ): Promise<string> => {
   try {
     const base64Image = await fileToBase64(file);
@@ -84,7 +101,10 @@ export const performOCR = async (
         {
           role: "user",
           content: [
-            { type: "text", text: STYLE_PROMPTS[style].trim() }, // style-specific instructions
+            {
+              type: "text",
+              text: STYLE_PROMPTS[style].trim(),
+            },
             {
               type: "image_url",
               image_url: {
@@ -95,7 +115,7 @@ export const performOCR = async (
         },
       ],
       temperature: params.temperature,
-      max_tokens: 16384,
+      max_tokens: params.max_tokens,
       stream: true,
       extra_body: params.extra_body,
     });
@@ -109,7 +129,7 @@ export const performOCR = async (
       let displayText = fullText
         .replace(/<think>[\s\S]*?<\/think>/g, "")
         .trimStart();
-      
+
       if (onUpdate) {
         onUpdate(displayText);
       }

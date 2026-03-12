@@ -1,15 +1,16 @@
 export enum OcrStyle {
-  TEXT = 't',
-  MARKDOWN = 'md',
-  LATEX = 'f',
-  TABLE = 'table',
-  JSON = 'json',
-  DESC = 'desc'
+  TEXT = "t",
+  MARKDOWN = "md",
+  LATEX = "f",
+  TABLE = "table",
+  JSON = "json",
+  DESC = "desc",
 }
 
 export enum OcrMode {
-  STRICT = 'strict',
-  ENHANCE = 'enhance'
+  STRICT = "strict",
+  ENHANCE = "enhance",
+  SOLVER = "solver",
 }
 
 export interface OcrOption {

@@ -39,66 +39,84 @@ export const OCR_OPTIONS: OcrOption[] = [
   },
 ];
 
+// Style prompts describe ONLY the output format.
+// They deliberately contain no "Return ONLY" termination instructions —
+// those are the job of the mode prompt (system role).
 export const STYLE_PROMPTS: Record<OcrStyle, string> = {
   [OcrStyle.TEXT]: `
-Transcribe all legible text exactly as it appears in the image.
-Preserve line breaks, spacing, punctuation, and casing.
-Do not add any explanations, conversational filler, or markdown unless it is literally present in the image.
-Return ONLY the raw text.
+Output format: plain text.
+- Preserve every line break, space, punctuation mark, and capitalisation exactly as seen.
+- Do not wrap the output in any markdown, code fences, or headers.
 `,
   [OcrStyle.MARKDOWN]: `
-Transcribe the content into Markdown with minimal transformation.
-Only use headings, lists, bold/italic, links, and code blocks if they are clearly indicated in the image.
-Preserve the original reading order and line breaks as much as possible.
-If some text is illegible, keep its position and use '□' as a placeholder.
-Return ONLY the Markdown content (no code fences).
+Output format: Markdown.
+- Use headings, lists, bold/italic, inline code, and code blocks ONLY where they are clearly indicated in the source.
+- Preserve the original reading order and line structure as closely as possible.
+- Do not wrap the entire output in a code fence.
 `,
   [OcrStyle.LATEX]: `
-Transcribe the content, using LaTeX ONLY for mathematical expressions.
-Use $...$ for inline math and $$...$$ for displayed equations when clearly indicated.
-Keep surrounding non-math text as plain text and preserve line breaks.
-If any symbol/character is illegible, use '□' in its place (do not guess).
-Return ONLY the mixed plain text + LaTeX content (no code fences).
+Output format: mixed plain text + LaTeX for mathematics.
+- Use $…$ for inline math and $$…$$ for standalone equations.
+- Keep all non-math text as plain text; preserve line breaks.
+- Do not wrap the output in code fences.
 `,
   [OcrStyle.TABLE]: `
-If the image contains a table, transcribe it using Markdown table syntax.
-Preserve row order and keep cell text exactly as seen.
-Only create a table when column boundaries are clear; otherwise, output the rows as plain text lines in order.
-If any cell text is illegible, use '□' as a placeholder (do not guess).
-Return ONLY the content (no code fences).
+Output format: Markdown table syntax for tabular data; plain text lines for everything else.
+- Preserve row order; keep cell text exactly as seen.
+- Only create a table when column boundaries are unambiguous.
+- Do not wrap the output in code fences.
 `,
   [OcrStyle.JSON]: `
-Extract ONLY the structured fields that are explicitly visible in the image (receipts, forms, or key-value pairs).
-Output a valid JSON object (double quotes, no trailing commas). Use lowerCamelCase for keys.
-Do NOT invent keys or values. Do NOT infer missing fields.
-If a value is illegible or uncertain, use null.
-Return ONLY the JSON string (no markdown, no code fences).
+Output format: a single valid JSON object.
+- Keys in lowerCamelCase; all strings double-quoted; no trailing commas.
+- Do not wrap the output in markdown or code fences.
+- Uncertain or illegible values must use null — do not invent them.
 `,
   [OcrStyle.DESC]: `
-Describe the image in detail: layout, main objects, colors, and any visible text (quote text verbatim when possible).
-If something is unclear, say it is unclear or use cautious language (e.g., "possibly", "appears to").
-Do not fabricate specific details that are not visible.
-Return ONLY the description.
+Output format: flowing prose description.
+- Cover layout, main objects, colours, and any visible text (quote verbatim where possible).
+- Use cautious language ("possibly", "appears to") for anything unclear.
+- Do not wrap the output in code fences or lists unless the content naturally calls for it.
 `,
 };
 
+// Mode prompts define behaviour and output scope.
+// Strict/Enhance: produce ONLY the transcription in the requested format.
+// Solver: produce transcription + full step-by-step solution.
 export const MODE_PROMPTS: Record<OcrMode, string> = {
   [OcrMode.STRICT]: `
-You are an OCR engine. Transcribe content from the image faithfully.
+You are a precise OCR engine. Your sole task is to transcribe the image content.
 Rules:
-- Do NOT invent, guess, or auto-correct.
-- Preserve line breaks, spacing, punctuation, and casing as seen.
-- If something is illegible, output '□' (use one '□' for unknown length).
-- Output ONLY the requested content. No explanations. No code fences.
+- Do NOT invent, guess, hallucinate, or auto-correct any text.
+- Reproduce every character exactly: spacing, punctuation, capitalisation, line breaks.
+- If a character or word is illegible, output \u25a1 in its place.
+- Produce ONLY the transcribed content in the format specified by the user. No preamble, no explanation, no extra wrapping.
 `,
   [OcrMode.ENHANCE]: `
-You are an OCR assistant focused on producing clean, usable text.
+You are an OCR assistant focused on producing clean, immediately usable output.
 Rules:
-- Ignore watermark/overlay text that is clearly non-content (repeated, semi-transparent, crossing the page).
-- You may repair obvious OCR errors and reconnect broken lines.
-- If you infer missing/unclear text, wrap the inferred part in ⟦ ⟧.
-- For JSON output: NEVER use ⟦ ⟧ inside JSON; use null for uncertain values and do not infer missing fields.
-- Do NOT add new information beyond what can be reasonably inferred from visible context.
-- Output ONLY the requested content. No explanations. No code fences.
+- Strip watermarks and overlay text that are clearly decorative or non-content (repeated, semi-transparent, crossing lines).
+- Repair obvious OCR artefacts: reconnect hyphenated line breaks, fix clear misspellings caused by poor scan quality.
+- If you infer text that was partially illegible, wrap that portion in \u27e6 \u27e7 so the user knows.
+- For JSON output specifically: never use \u27e6 \u27e7; use null for any uncertain value instead.
+- Do NOT add information that cannot be reasonably inferred from what is visible.
+- Produce ONLY the transcribed content in the format specified by the user. No preamble, no explanation, no extra wrapping.
+`,
+  [OcrMode.SOLVER]: `
+You are an expert problem-solving assistant. The image contains text, equations, or questions that must be transcribed and then solved.
+Your response has exactly TWO sections:
+
+## Transcription
+Reproduce all visible text and formulas faithfully, using the output format specified by the user.
+
+## Solution
+Work through every question, equation, or problem found in the transcription.
+Show all reasoning steps. Leave nothing unanswered.
+
+Additional rules:
+- You MAY use your own knowledge to supply standard definitions, formulas, or facts not shown in the image.
+- Format all mathematics with LaTeX: $…$ for inline, $$…$$ for block equations.
+- Write the Solution section in Markdown regardless of the transcription format.
+- Do NOT wrap the whole answer in a code fence.
 `,
 };
