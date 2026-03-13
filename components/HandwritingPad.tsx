@@ -34,6 +34,9 @@ interface HandwritingPadProps {
   isDarkMode?: boolean;
 }
 
+type RuntimeTool = "pen" | "eraser" | "hand";
+type ToolMode = "auto" | RuntimeTool;
+
 const HandwritingPad: React.FC<HandwritingPadProps> = ({
   onFileChange,
   disabled,
@@ -48,11 +51,15 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({
   const currentStrokes = history[currentStep];
 
   const [activeStroke, setActiveStroke] = useState<Stroke | null>(null);
-  const [tool, setTool] = useState<"pen" | "eraser" | "hand">("pen");
+  const [toolMode, setToolMode] = useState<ToolMode>("pen");
+  const [autoRuntimeTool, setAutoRuntimeTool] = useState<RuntimeTool>("pen");
+  const [autoToolHint, setAutoToolHint] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [viewOffset, setViewOffset] = useState({ x: 0, y: 0 });
   const isDraggingRef = useRef(false);
   const lastPosRef = useRef<{ x: number; y: number } | null>(null);
+  const hintTimerRef = useRef<number | null>(null);
+  const autoEraserLockedRef = useRef(false);
 
   // Dynamic colors based on theme
   const penColor = isDarkMode ? "#ffffff" : "#000000";
@@ -143,7 +150,7 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({
     // Draw strokes
     [
       ...currentStrokes,
-      ...(activeStroke && tool === "pen" ? [activeStroke] : []),
+      ...(activeStroke ? [activeStroke] : []),
     ].forEach((s) => {
       // Recalculate color based on theme
       const isStandardColor = s.color === "#000000" || s.color === "#ffffff";
@@ -155,7 +162,7 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({
     });
 
     ctx.restore();
-  }, [currentStrokes, activeStroke, tool, viewOffset, bgColor, penColor]);
+  }, [currentStrokes, activeStroke, viewOffset, bgColor, penColor]);
 
   // Export to App state
   const exportImage = useCallback(() => {
@@ -277,11 +284,85 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({
     });
   };
 
+  const showAutoToolHint = useCallback((message: string) => {
+    setAutoToolHint(message);
+
+    if (hintTimerRef.current !== null) {
+      window.clearTimeout(hintTimerRef.current);
+    }
+
+    hintTimerRef.current = window.setTimeout(() => {
+      setAutoToolHint(null);
+      hintTimerRef.current = null;
+    }, 1400);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (hintTimerRef.current !== null) {
+        window.clearTimeout(hintTimerRef.current);
+      }
+    };
+  }, []);
+
+  const resolveAutoTool = (e: React.PointerEvent): RuntimeTool => {
+    if (e.pointerType === "touch") {
+      return "hand";
+    }
+
+    if (e.pointerType === "pen") {
+      if (autoEraserLockedRef.current || e.pressure > 0.6) {
+        autoEraserLockedRef.current = true;
+        return "eraser";
+      }
+
+      return "pen";
+    }
+
+    return "pen";
+  };
+
+  const updateAutoRuntimeTool = useCallback(
+    (nextTool: RuntimeTool) => {
+      setAutoRuntimeTool((prev) => {
+        if (prev !== nextTool) {
+          showAutoToolHint(
+            nextTool === "hand"
+              ? "Auto: hand tool"
+              : nextTool === "eraser"
+              ? "Auto: eraser tool"
+              : "Auto: pen tool"
+          );
+        }
+        return nextTool;
+      });
+    },
+    [showAutoToolHint]
+  );
+
+  const createPenStroke = (point: Point): Stroke => ({
+    points: [point],
+    tool: "pen",
+    color: penColor,
+    width: penWidth,
+    minX: point.x,
+    maxX: point.x,
+    minY: point.y,
+    maxY: point.y,
+  });
+
   const handlePointerDown = (e: React.PointerEvent) => {
     e.currentTarget.setPointerCapture(e.pointerId);
     if (disabled) return;
 
-    if (tool === "hand") {
+    const effectiveTool: RuntimeTool =
+      toolMode === "auto" ? resolveAutoTool(e) : toolMode;
+
+    if (toolMode === "auto") {
+      updateAutoRuntimeTool(effectiveTool);
+    }
+
+    if (effectiveTool === "hand") {
       isDraggingRef.current = true;
       const domPoint = getCoordinates(e); // DOM coords
       if (domPoint) {
@@ -299,18 +380,9 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({
       y: domPoint.y - viewOffset.y,
     };
 
-    if (tool === "pen") {
-      setActiveStroke({
-        points: [point],
-        tool: "pen",
-        color: penColor, // Use dynamic color so new stroke inherits theme
-        width: penWidth,
-        minX: point.x,
-        maxX: point.x,
-        minY: point.y,
-        maxY: point.y,
-      });
-    } else if (tool === "eraser") {
+    if (effectiveTool === "pen") {
+      setActiveStroke(createPenStroke(point));
+    } else if (effectiveTool === "eraser") {
       const remaining = checkEraserHit(point.x, point.y, currentStrokes);
       if (remaining.length !== currentStrokes.length) {
         commitHistory(remaining);
@@ -325,7 +397,19 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({
     const domPoint = getCoordinates(e);
     if (!domPoint) return;
 
-    if (tool === "hand") {
+    const effectiveTool: RuntimeTool =
+      toolMode === "auto" ? resolveAutoTool(e) : toolMode;
+
+    if (toolMode === "auto") {
+      updateAutoRuntimeTool(effectiveTool);
+    }
+
+    if (effectiveTool === "hand") {
+      if (activeStroke) {
+        commitHistory([...currentStrokes, activeStroke]);
+        setActiveStroke(null);
+      }
+
       if (isDraggingRef.current && lastPosRef.current) {
         const dx = domPoint.x - lastPosRef.current.x;
         const dy = domPoint.y - lastPosRef.current.y;
@@ -347,9 +431,15 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({
         ? e.nativeEvent.getCoalescedEvents()
         : [e.nativeEvent];
 
-    if (tool === "pen") {
+    if (effectiveTool === "pen") {
       setActiveStroke((prev) => {
-        if (!prev) return null;
+        if (!prev) {
+          const point = {
+            x: domPoint.x - viewOffset.x,
+            y: domPoint.y - viewOffset.y,
+          };
+          return createPenStroke(point);
+        }
 
         let newPoints = [...prev.points];
         let { minX, maxX, minY, maxY } = prev;
@@ -390,7 +480,12 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({
           maxY,
         };
       });
-    } else if (tool === "eraser") {
+    } else if (effectiveTool === "eraser") {
+      if (activeStroke) {
+        commitHistory([...currentStrokes, activeStroke]);
+        setActiveStroke(null);
+      }
+
       // Just consider the latest point for eraser to avoid lag
       // Transform to world space
       const point = {
@@ -408,13 +503,14 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({
   const handlePointerUp = (e: React.PointerEvent) => {
     e.currentTarget.releasePointerCapture(e.pointerId);
 
-    if (tool === "hand") {
-      isDraggingRef.current = false;
-      lastPosRef.current = null;
-    } else if (tool === "pen" && activeStroke) {
+    if (activeStroke) {
       commitHistory([...currentStrokes, activeStroke]);
       setActiveStroke(null);
     }
+
+    isDraggingRef.current = false;
+    lastPosRef.current = null;
+    autoEraserLockedRef.current = false;
   };
 
   const initCanvas = useCallback(() => {
@@ -494,9 +590,10 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({
           <div>
             <SegmentedControl
               name="drawing-tools"
-              value={tool}
-              onChange={(val) => setTool(val as 'pen' | 'eraser' | 'hand')}
+              value={toolMode}
+              onChange={(val) => setToolMode(val as ToolMode)}
               options={[
+                { value: 'auto', label: 'Auto' },
                 { value: 'hand', label: '', icon: Hand },
                 { value: 'pen', label: '', icon: Pen },
                 { value: 'eraser', label: '', icon: Eraser }
@@ -554,7 +651,7 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({
       {/* Canvas Area - Keep background white for ink contrast */}
       <div
         className={`relative flex-1 bg-white overflow-hidden touch-none ${
-          tool === "hand"
+          (toolMode === "auto" ? autoRuntimeTool : toolMode) === "hand"
             ? isDraggingRef.current
               ? "cursor-grabbing"
               : "cursor-grab"
@@ -570,6 +667,14 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({
           className="block w-full h-full touch-none outline-none"
           style={{ touchAction: "none" }}
         />
+
+        {autoToolHint && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 pointer-events-none">
+            <div className="px-3 py-1.5 rounded-full text-xs font-medium bg-slate-900/85 text-white dark:bg-slate-100/90 dark:text-slate-900 shadow-sm">
+              {autoToolHint}
+            </div>
+          </div>
+        )}
 
         {/* Empty State Hint */}
         {currentStrokes.length === 0 && !activeStroke && (
