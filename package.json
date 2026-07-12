@@ -5,17 +5,19 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types tests/run.ts",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
-    "@tailwindcss/typography": "^0.5.19",
-    "framer-motion": "^12.35.2",
-    "katex": "^0.16.38",
-    "lucide-react": "^0.577.0",
-    "openai": "^6.27.0",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4",
+    "@tailwindcss/typography": "^0.5.20",
+    "framer-motion": "^12.42.2",
+    "katex": "^0.17.0",
+    "lucide-react": "^1.24.0",
+    "openai": "^6.46.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "react-markdown": "^10.1.0",
     "react-syntax-highlighter": "^16.1.1",
     "rehype-katex": "^7.0.1",
@@ -23,14 +25,16 @@
     "remark-math": "^6.0.0"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.2.1",
-    "@types/node": "^25.4.0",
+    "@tailwindcss/postcss": "^4.3.2",
+    "@types/node": "^26.1.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
     "@types/react-syntax-highlighter": "^15.5.13",
-    "@vitejs/plugin-basic-ssl": "^2.1.4",
-    "@vitejs/plugin-react": "^5.1.4",
-    "postcss": "^8.5.8",
-    "tailwindcss": "^4.2.1",
-    "typescript": "~5.9.3",
-    "vite": "^7.3.1"
+    "@vitejs/plugin-basic-ssl": "^2.3.0",
+    "@vitejs/plugin-react": "^6.0.3",
+    "postcss": "^8.5.17",
+    "tailwindcss": "^4.3.2",
+    "typescript": "~7.0.2",
+    "vite": "^8.1.4"
   }
 }

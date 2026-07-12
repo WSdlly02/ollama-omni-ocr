@@ -20,6 +20,7 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onFileChange, disabled })
   const [capturedUrl, setCapturedUrl] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [flash, setFlash] = useState(false);
+  const [isVideoReady, setIsVideoReady] = useState(false);
   const [zoom, setZoom] = useState<1 | 2 | 3 | 5 | 10>(1);
   const ZOOM_LEVELS = [1, 2, 3, 5, 10] as const;
 
@@ -37,6 +38,7 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onFileChange, disabled })
     stopStream();
     setCameraState('requesting');
     setErrorMsg('');
+    setIsVideoReady(false);
     setZoom(1);
 
     try {
@@ -87,6 +89,12 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onFileChange, disabled })
     };
   }, [stopStream]);
 
+  useEffect(() => {
+    return () => {
+      if (capturedUrl) URL.revokeObjectURL(capturedUrl);
+    };
+  }, [capturedUrl]);
+
   const handleCapture = useCallback(() => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -94,6 +102,12 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onFileChange, disabled })
 
     const w = video.videoWidth;
     const h = video.videoHeight;
+    if (!isVideoReady || w === 0 || h === 0) {
+      stopStream();
+      setErrorMsg('The camera did not produce a usable frame. Please try again.');
+      setCameraState('error');
+      return;
+    }
     canvas.width = w;
     canvas.height = h;
 
@@ -122,7 +136,11 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onFileChange, disabled })
     setTimeout(() => setFlash(false), 200);
 
     canvas.toBlob((blob) => {
-      if (!blob) return;
+      if (!blob) {
+        setErrorMsg('The captured frame could not be converted to an image.');
+        setCameraState('error');
+        return;
+      }
       const file = new File([blob], 'camera_capture.jpg', { type: 'image/jpeg' });
       const url = URL.createObjectURL(blob);
       setCapturedUrl(url);
@@ -131,16 +149,13 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onFileChange, disabled })
       setCameraState('captured');
       setPreviewFullscreen(true); // open fullscreen preview immediately after capture
     }, 'image/jpeg', 0.95);
-  }, [facingMode, zoom, onFileChange, stopStream]);
+  }, [facingMode, zoom, onFileChange, stopStream, isVideoReady]);
 
   const handleRetake = useCallback(() => {
-    if (capturedUrl) {
-      URL.revokeObjectURL(capturedUrl);
-      setCapturedUrl(null);
-    }
+    setCapturedUrl(null);
     onFileChange(null);
     startCamera(facingMode);
-  }, [capturedUrl, facingMode, startCamera, onFileChange]);
+  }, [facingMode, startCamera, onFileChange]);
 
   const handleFlip = useCallback(() => {
     const next = facingMode === 'user' ? 'environment' : 'user';
@@ -151,13 +166,10 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onFileChange, disabled })
   }, [facingMode, cameraState, startCamera]);
 
   const handleClear = useCallback(() => {
-    if (capturedUrl) {
-      URL.revokeObjectURL(capturedUrl);
-      setCapturedUrl(null);
-    }
+    setCapturedUrl(null);
     onFileChange(null);
     setCameraState('idle');
-  }, [capturedUrl, onFileChange]);
+  }, [onFileChange]);
 
   // ── Idle state ──────────────────────────────────────────────────
   if (cameraState === 'idle') {
@@ -306,6 +318,7 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onFileChange, disabled })
           playsInline
           muted
           autoPlay
+          onLoadedMetadata={() => setIsVideoReady(true)}
         />
       </div>
 
@@ -347,8 +360,8 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onFileChange, disabled })
         {/* Shutter */}
         <button
           onClick={handleCapture}
-          disabled={disabled}
-          className="w-18 h-18 rounded-full border-4 border-white bg-white/20 hover:bg-white/30 active:scale-90 transition-all shadow-xl flex items-center justify-center"
+          disabled={disabled || !isVideoReady}
+          className="w-18 h-18 rounded-full border-4 border-white bg-white/20 hover:bg-white/30 active:scale-90 transition-all shadow-xl flex items-center justify-center disabled:opacity-40 disabled:cursor-wait"
           style={{ width: 72, height: 72 }}
           title="Take photo"
         >

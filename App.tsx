@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Sparkles, Settings } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Sparkles, Settings, Square } from 'lucide-react';
 import { OcrStyle, OcrMode } from './types';
 import InputPanel, { type InputMode } from './components/InputPanel';
 import StyleSelector from './components/StyleSelector';
@@ -7,12 +7,19 @@ import ModeSelector from './components/ModeSelector';
 import ResultDisplay from './components/ResultDisplay';
 import SettingsModal from './components/SettingsModal';
 import { performOCR } from './ocrService';
+import { isResultContextStale, type ResultContext } from './resultFreshness';
 
 const App: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<string | null>(null);
+  const [resultContext, setResultContext] = useState<ResultContext | null>(null);
+  const [sourceRevision, setSourceRevision] = useState(0);
+  const [isResultIncomplete, setIsResultIncomplete] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isPreservingPreviousResult, setIsPreservingPreviousResult] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const requestIdRef = useRef(0);
 
   // Settings State
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -58,38 +65,82 @@ const App: React.FC = () => {
     }
   }, [isDarkMode]);
 
+  useEffect(() => {
+    return () => abortControllerRef.current?.abort();
+  }, []);
+
   const handleRecognize = async () => {
     if (!file) return;
 
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+    abortControllerRef.current = controller;
+    const requestContext: ResultContext = {
+      sourceRevision,
+      style,
+      mode,
+      baseUrl,
+      model,
+    };
+
     setIsProcessing(true);
+    setIsPreservingPreviousResult(result !== null);
     setError(null);
-    setResult(null);
 
     try {
       const ocrText = await performOCR(file, baseUrl, model, style, mode, (text) => {
+        if (requestIdRef.current !== requestId || text.length === 0) return;
         setResult(text);
-      });
+        setResultContext(requestContext);
+        setIsResultIncomplete(true);
+        setIsPreservingPreviousResult(false);
+      }, controller.signal);
+
+      if (requestIdRef.current !== requestId) return;
+      if (ocrText.length === 0) {
+        throw new Error("The model returned an empty result.");
+      }
       setResult(ocrText);
-    } catch (err: any) {
-      setError(err.message || "Failed to process image.");
+      setResultContext(requestContext);
+      setIsResultIncomplete(false);
+    } catch (err: unknown) {
+      if (requestIdRef.current !== requestId || controller.signal.aborted) return;
+      setError(err instanceof Error ? err.message : "Failed to process image.");
     } finally {
-      setIsProcessing(false);
+      if (requestIdRef.current === requestId) {
+        setIsProcessing(false);
+        setIsPreservingPreviousResult(false);
+        abortControllerRef.current = null;
+      }
     }
+  };
+
+  const handleCancel = () => {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    requestIdRef.current += 1;
+    setIsProcessing(false);
+    setIsPreservingPreviousResult(false);
   };
 
   const handleFileChange = useCallback((newFile: File | null) => {
     setFile(newFile);
-    // Explicitly do NOT clear result here to allow adjusting handwriting 
-    // without losing previous recognition immediately.
-    // Logic: result is only cleared when recognition starts or input mode changes.
-    if (newFile === null) {
-       // If file is cleared (e.g. handwriting clear), maybe clear result? 
-       // User preferred "modify pen strokes" -> keep result. 
-       // "Clear canvas" -> probably should clear result? 
-       // But user said "editing strokes" clears result. 
-       // So changing strokes provides a new file.
-    }
+    setSourceRevision((revision) => revision + 1);
+    setError(null);
+    // Deliberately keep the previous result. ResultDisplay marks it as stale
+    // until recognition succeeds for this new source/configuration.
   }, []);
+
+  const isResultStale = result !== null && isResultContextStale(resultContext, {
+    hasSource: file !== null,
+    sourceRevision,
+    style,
+    mode,
+    baseUrl,
+    model,
+  });
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 transition-colors duration-200">
@@ -141,20 +192,22 @@ const App: React.FC = () => {
               {/* Action Button */}
               <div className="pt-2">
                 <button
-                  onClick={handleRecognize}
-                  disabled={!file || isProcessing}
+                  onClick={isProcessing ? handleCancel : handleRecognize}
+                  disabled={!file && !isProcessing}
                   className={`
                     w-full py-4 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-all transform
-                    ${!file || isProcessing 
+                    ${!file && !isProcessing
                       ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed' 
+                      : isProcessing
+                      ? 'bg-slate-700 text-white hover:bg-slate-800 active:scale-[0.98] shadow-slate-500/20'
                       : 'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-[0.98] shadow-indigo-500/20'
                     }
                   `}
                 >
                   {isProcessing ? (
                     <>
-                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      Processing...
+                      <Square size={18} fill="currentColor" />
+                      Cancel Recognition
                     </>
                   ) : (
                     <>
@@ -201,6 +254,9 @@ const App: React.FC = () => {
                 onRetry={handleRecognize}
                 selectedStyle={style}
                 isDarkMode={isDarkMode}
+                isStale={isResultStale}
+                isIncomplete={isResultIncomplete}
+                isPreservingPreviousResult={isPreservingPreviousResult}
               />
             </div>
           </div>

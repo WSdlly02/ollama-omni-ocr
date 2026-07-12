@@ -55,23 +55,40 @@ interface ResultDisplayProps {
   onRetry: () => void;
   selectedStyle: OcrStyle;
   isDarkMode: boolean;
+  isStale: boolean;
+  isIncomplete: boolean;
+  isPreservingPreviousResult: boolean;
 }
 
-const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, isLoading, error, onRetry, selectedStyle, isDarkMode }) => {
+const ResultDisplay: React.FC<ResultDisplayProps> = ({
+  result,
+  isLoading,
+  error,
+  onRetry,
+  selectedStyle,
+  isDarkMode,
+  isStale,
+  isIncomplete,
+  isPreservingPreviousResult,
+}) => {
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
   const [viewMode, setViewMode] = useState<'raw' | 'preview'>('preview');
 
-  const handleCopy = () => {
-    if (result) {
-      // Strip markdown code fences (```language ... ```) for clean copying
-      const cleanText = result
-        .replace(/^```[\w-]*\n/gm, '') // Remove opening fence (e.g., ```json)
-        .replace(/```$/gm, '')          // Remove closing fence
-        .trim();                        // Trim extra whitespace
+  const handleCopy = async () => {
+    if (!result) return;
 
-      navigator.clipboard.writeText(cleanText);
+    try {
+      // Copy the source exactly. Code fences may be genuine OCR content and
+      // silently stripping them corrupts Markdown/code results.
+      await navigator.clipboard.writeText(result);
+      setCopyFailed(false);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+      setCopyFailed(true);
+      setTimeout(() => setCopyFailed(false), 2500);
     }
   };
 
@@ -88,7 +105,7 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, isLoading, error,
     URL.revokeObjectURL(url);
   };
 
-  if (error) {
+  if (error && !result) {
     return (
       <div className="h-full min-h-[400px] flex flex-col items-center justify-center p-8 bg-red-50 dark:bg-red-900/10 rounded-2xl border border-red-100 dark:border-red-900/30 text-center">
         <div className="bg-red-100 dark:bg-red-900/20 p-4 rounded-full mb-4">
@@ -194,19 +211,49 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, isLoading, error,
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
               copied 
                 ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' 
+                : copyFailed
+                ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
                 : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-indigo-300 dark:hover:border-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400'
             }`}
           >
-            {copied ? <Check size={16} /> : <Copy size={16} />}
-            {copied ? 'Copied' : 'Copy'}
+            {copied ? <Check size={16} /> : copyFailed ? <AlertCircle size={16} /> : <Copy size={16} />}
+            {copied ? 'Copied' : copyFailed ? 'Copy failed' : 'Copy'}
           </button>
         </div>
       </div>
       <div className="flex-grow relative overflow-auto">
+        {(error || isStale || isIncomplete || isPreservingPreviousResult) && (
+          <div className="border-b border-slate-200 dark:border-slate-700 px-4 py-3 space-y-2">
+            {error && (
+              <div className="flex items-start justify-between gap-3 text-sm text-red-700 dark:text-red-300">
+                <span className="flex items-start gap-2">
+                  <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                  Recognition failed, so the previous output was kept: {error}
+                </span>
+                <button onClick={onRetry} className="shrink-0 font-semibold hover:underline">Retry</button>
+              </div>
+            )}
+            {isPreservingPreviousResult && (
+              <p className="text-sm text-indigo-700 dark:text-indigo-300">
+                Waiting for new output. The previous result is preserved until the stream produces content.
+              </p>
+            )}
+            {isStale && !isPreservingPreviousResult && (
+              <p className="text-sm text-amber-700 dark:text-amber-300">
+                This result belongs to an earlier input or configuration. Run recognition to refresh it.
+              </p>
+            )}
+            {isIncomplete && !isLoading && (
+              <p className="text-sm text-amber-700 dark:text-amber-300">
+                Recognition stopped before completion. This partial output has been kept.
+              </p>
+            )}
+          </div>
+        )}
         {viewMode === 'raw' ? (
           <textarea
             readOnly
-            value={result}
+            value={result ?? ''}
             className="w-full h-full min-h-[400px] p-4 text-sm font-mono text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 resize-none focus:outline-none"
             spellCheck={false}
           />

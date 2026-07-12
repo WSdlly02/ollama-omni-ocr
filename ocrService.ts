@@ -1,6 +1,8 @@
 import OpenAI from "openai";
+import type { ChatCompletionCreateParamsStreaming } from "openai/resources/chat/completions";
 import { OcrStyle, OcrMode } from "./types";
 import { STYLE_PROMPTS, MODE_PROMPTS } from "./constants";
+import { removeThinkingBlocks } from "./ocrTextFilter";
 
 const MODE_PARAMS = {
   [OcrMode.STRICT]: {
@@ -51,14 +53,18 @@ const MODE_PARAMS = {
 };
 
 /**
- * Helper to convert a File object to a Base64 string.
+ * Helper to convert a File object to a complete data URL. Keeping the browser-
+ * supplied MIME type avoids labelling PNG/WebP input as JPEG.
  */
-const fileToBase64 = (file: File): Promise<string> => {
+const fileToDataUrl = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onloadend = () => {
-      const base64String = (reader.result as string).split(",")[1];
-      resolve(base64String);
+      if (typeof reader.result !== "string") {
+        reject(new Error("Could not encode the selected image."));
+        return;
+      }
+      resolve(reader.result);
     };
     reader.onerror = reject;
     reader.readAsDataURL(file);
@@ -76,9 +82,18 @@ export const performOCR = async (
   style: OcrStyle,
   mode: OcrMode,
   onUpdate?: (text: string) => void,
+  signal?: AbortSignal,
 ): Promise<string> => {
   try {
-    const base64Image = await fileToBase64(file);
+    if (!file.type.startsWith("image/")) {
+      throw new Error("The selected file is not a supported image.");
+    }
+
+    if (file.size === 0) {
+      throw new Error("The selected image is empty.");
+    }
+
+    const imageDataUrl = await fileToDataUrl(file);
 
     const cleanBaseUrl = baseUrl.replace(/\/$/, "");
 
@@ -90,8 +105,9 @@ export const performOCR = async (
 
     const params = MODE_PARAMS[mode];
 
-    // @ts-ignore - Using any to allow extra_body and streaming parameters for Ollama
-    const stream = await openai.chat.completions.create({
+    const request: ChatCompletionCreateParamsStreaming & {
+      extra_body: typeof params.extra_body;
+    } = {
       model: model,
       messages: [
         {
@@ -108,7 +124,7 @@ export const performOCR = async (
             {
               type: "image_url",
               image_url: {
-                url: `data:image/jpeg;base64,${base64Image}`,
+                url: imageDataUrl,
               },
             },
           ],
@@ -118,29 +134,27 @@ export const performOCR = async (
       max_tokens: params.max_tokens,
       stream: true,
       extra_body: params.extra_body,
-    });
+    };
+
+    const stream = await openai.chat.completions.create(request, { signal });
 
     let fullText = "";
     for await (const chunk of stream) {
       const content = chunk.choices[0]?.delta?.content || "";
       fullText += content;
 
-      // Clean up thinking tags
-      let displayText = fullText
-        .replace(/<think>[\s\S]*?<\/think>/g, "")
-        .trimStart();
+      const displayText = removeThinkingBlocks(fullText);
 
       if (onUpdate) {
         onUpdate(displayText);
       }
     }
 
-    // Final cleanup
-    // Removed code block stripping. Only stripping think tags.
-    let cleanText = fullText.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
-
-    return cleanText;
+    return removeThinkingBlocks(fullText);
   } catch (error) {
+    if (signal?.aborted) {
+      throw error;
+    }
     console.error("Ollama OCR Error:", error);
     if (error instanceof Error) {
       throw new Error(`OCR Failed: ${error.message}`);

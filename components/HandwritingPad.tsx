@@ -36,6 +36,7 @@ interface HandwritingPadProps {
 
 type RuntimeTool = "pen" | "eraser" | "hand";
 type ToolMode = "auto" | RuntimeTool;
+const MAX_HISTORY_STEPS = 100;
 
 const HandwritingPad: React.FC<HandwritingPadProps> = ({
   onFileChange,
@@ -237,8 +238,9 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({
   // --- Interaction Logic ---
 
   const commitHistory = (newStrokes: Stroke[]) => {
-    const newHistory = history.slice(0, currentStep + 1);
-    newHistory.push(newStrokes);
+    const branchedHistory = history.slice(0, currentStep + 1);
+    branchedHistory.push(newStrokes);
+    const newHistory = branchedHistory.slice(-MAX_HISTORY_STEPS);
     setHistory(newHistory);
     // Export whenever history is committed (end of stroke, clear, undo/redo)
     // We need to wait for state update to trigger export?
@@ -352,8 +354,11 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({
   });
 
   const handlePointerDown = (e: React.PointerEvent) => {
-    e.currentTarget.setPointerCapture(e.pointerId);
     if (disabled) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    // A cached rect from mount becomes wrong after page/container scrolling.
+    // Refresh it once per gesture, then reuse it for coalesced pointer events.
+    rectRef.current = canvasRef.current?.getBoundingClientRect() ?? null;
 
     const effectiveTool: RuntimeTool =
       toolMode === "auto" ? resolveAutoTool(e) : toolMode;
@@ -501,7 +506,9 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
-    e.currentTarget.releasePointerCapture(e.pointerId);
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
 
     if (activeStroke) {
       commitHistory([...currentStrokes, activeStroke]);
@@ -511,6 +518,7 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({
     isDraggingRef.current = false;
     lastPosRef.current = null;
     autoEraserLockedRef.current = false;
+    rectRef.current = null;
   };
 
   const initCanvas = useCallback(() => {
@@ -663,7 +671,7 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
-          onPointerLeave={handlePointerUp}
+          onPointerCancel={handlePointerUp}
           className="block w-full h-full touch-none outline-none"
           style={{ touchAction: "none" }}
         />
