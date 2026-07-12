@@ -3,6 +3,10 @@ import type { ChatCompletionCreateParamsStreaming } from "openai/resources/chat/
 import { OcrStyle, OcrMode } from "./types";
 import { STYLE_PROMPTS, MODE_PROMPTS } from "./constants";
 import { removeThinkingBlocks } from "./ocrTextFilter";
+import {
+  createModelNotFoundError,
+  normalizeOllamaError,
+} from "./ollamaErrors";
 
 const MODE_PARAMS = {
   [OcrMode.STRICT]: {
@@ -52,6 +56,36 @@ const MODE_PARAMS = {
   },
 };
 
+const createOllamaClient = (baseUrl: string): OpenAI =>
+  new OpenAI({
+    baseURL: baseUrl.replace(/\/+$/, ""),
+    apiKey: "ollama",
+    dangerouslyAllowBrowser: true,
+  });
+
+export interface OllamaConnectionResult {
+  availableModels: string[];
+}
+
+export const testOllamaConnection = async (
+  baseUrl: string,
+  model: string,
+  signal?: AbortSignal,
+): Promise<OllamaConnectionResult> => {
+  try {
+    const page = await createOllamaClient(baseUrl).models.list({ signal });
+    const availableModels = page.data.map((item) => item.id).sort();
+
+    if (!availableModels.includes(model)) {
+      throw createModelNotFoundError(model);
+    }
+
+    return { availableModels };
+  } catch (error) {
+    throw normalizeOllamaError(error, { model, operation: "connection test" });
+  }
+};
+
 /**
  * Helper to convert a File object to a complete data URL. Keeping the browser-
  * supplied MIME type avoids labelling PNG/WebP input as JPEG.
@@ -84,24 +118,17 @@ export const performOCR = async (
   onUpdate?: (text: string) => void,
   signal?: AbortSignal,
 ): Promise<string> => {
+  if (!file.type.startsWith("image/")) {
+    throw new Error("The selected file is not a supported image.");
+  }
+
+  if (file.size === 0) {
+    throw new Error("The selected image is empty.");
+  }
+
   try {
-    if (!file.type.startsWith("image/")) {
-      throw new Error("The selected file is not a supported image.");
-    }
-
-    if (file.size === 0) {
-      throw new Error("The selected image is empty.");
-    }
-
     const imageDataUrl = await fileToDataUrl(file);
-
-    const cleanBaseUrl = baseUrl.replace(/\/$/, "");
-
-    const openai = new OpenAI({
-      baseURL: cleanBaseUrl,
-      apiKey: "ollama",
-      dangerouslyAllowBrowser: true,
-    });
+    const openai = createOllamaClient(baseUrl);
 
     const params = MODE_PARAMS[mode];
 
@@ -156,9 +183,6 @@ export const performOCR = async (
       throw error;
     }
     console.error("Ollama OCR Error:", error);
-    if (error instanceof Error) {
-      throw new Error(`OCR Failed: ${error.message}`);
-    }
-    throw new Error("An unexpected error occurred during recognition.");
+    throw normalizeOllamaError(error, { model, operation: "recognition" });
   }
 };

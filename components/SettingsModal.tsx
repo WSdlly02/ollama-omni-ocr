@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { X, Moon, Sun, Monitor } from 'lucide-react';
+import { AlertCircle, Cable, CircleCheck, LoaderCircle, X, Moon, Sun, Monitor } from 'lucide-react';
 import SegmentedControl from './SegmentedControl';
+import { testOllamaConnection } from '../ocrService';
 import {
   validateOllamaSettings,
   type OllamaSettings,
@@ -12,6 +13,12 @@ interface SettingsModalProps extends OllamaSettings {
   onClose: () => void;
   onSave: (settings: OllamaSettings) => void;
 }
+
+type ConnectionTestState =
+  | { status: 'idle' }
+  | { status: 'testing' }
+  | { status: 'success'; message: string }
+  | { status: 'error'; message: string };
 
 const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
@@ -25,7 +32,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   const [draftModel, setDraftModel] = useState(model);
   const [draftTheme, setDraftTheme] = useState<Theme>(theme);
   const [errors, setErrors] = useState<{ baseUrl?: string; model?: string }>({});
+  const [connectionTest, setConnectionTest] = useState<ConnectionTestState>({ status: 'idle' });
   const baseUrlInputRef = useRef<HTMLInputElement>(null);
+  const connectionControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -34,6 +43,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     setDraftTheme(theme);
     const validation = validateOllamaSettings({ baseUrl, model, theme });
     setErrors(validation.value ? {} : validation.errors);
+    connectionControllerRef.current?.abort();
+    connectionControllerRef.current = null;
+    setConnectionTest({ status: 'idle' });
   }, [isOpen, baseUrl, model, theme]);
 
   useEffect(() => {
@@ -57,6 +69,16 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
+  useEffect(() => {
+    return () => connectionControllerRef.current?.abort();
+  }, []);
+
+  useEffect(() => {
+    if (isOpen) return;
+    connectionControllerRef.current?.abort();
+    connectionControllerRef.current = null;
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const handleSave = () => {
@@ -70,6 +92,50 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
     onSave(validation.value);
     onClose();
+  };
+
+  const invalidateConnectionTest = () => {
+    connectionControllerRef.current?.abort();
+    connectionControllerRef.current = null;
+    setConnectionTest({ status: 'idle' });
+  };
+
+  const handleTestConnection = async () => {
+    const validation = validateOllamaSettings({
+      baseUrl: draftBaseUrl,
+      model: draftModel,
+      theme: draftTheme,
+    });
+    setErrors(validation.errors);
+    if (!validation.value) return;
+
+    connectionControllerRef.current?.abort();
+    const controller = new AbortController();
+    connectionControllerRef.current = controller;
+    setConnectionTest({ status: 'testing' });
+
+    try {
+      const result = await testOllamaConnection(
+        validation.value.baseUrl,
+        validation.value.model,
+        controller.signal,
+      );
+      if (controller.signal.aborted) return;
+      setConnectionTest({
+        status: 'success',
+        message: `Connected. Model "${validation.value.model}" is available (${result.availableModels.length} model${result.availableModels.length === 1 ? '' : 's'} reported).`,
+      });
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      setConnectionTest({
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Connection test failed.',
+      });
+    } finally {
+      if (connectionControllerRef.current === controller) {
+        connectionControllerRef.current = null;
+      }
+    }
   };
 
   return (
@@ -121,6 +187,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
               value={draftBaseUrl}
               onChange={(event) => {
                 setDraftBaseUrl(event.target.value);
+                invalidateConnectionTest();
                 if (errors.baseUrl) setErrors((current) => ({ ...current, baseUrl: undefined }));
               }}
               aria-invalid={Boolean(errors.baseUrl)}
@@ -151,6 +218,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
               value={draftModel}
               onChange={(event) => {
                 setDraftModel(event.target.value);
+                invalidateConnectionTest();
                 if (errors.model) setErrors((current) => ({ ...current, model: undefined }));
               }}
               aria-invalid={Boolean(errors.model)}
@@ -170,23 +238,58 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
               </p>
             )}
           </div>
+
+          {connectionTest.status !== 'idle' && (
+            <div
+              role="status"
+              className={`flex items-start gap-2 rounded-lg px-3 py-2 text-sm ${
+                connectionTest.status === 'success'
+                  ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300'
+                  : connectionTest.status === 'error'
+                  ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300'
+                  : 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300'
+              }`}
+            >
+              {connectionTest.status === 'testing' ? (
+                <LoaderCircle size={16} className="mt-0.5 shrink-0 animate-spin" />
+              ) : connectionTest.status === 'success' ? (
+                <CircleCheck size={16} className="mt-0.5 shrink-0" />
+              ) : (
+                <AlertCircle size={16} className="mt-0.5 shrink-0" />
+              )}
+              <span>
+                {connectionTest.status === 'testing' ? 'Testing Ollama connection…' : connectionTest.message}
+              </span>
+            </div>
+          )}
         </div>
 
-        <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-3">
+        <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-end gap-2">
           <button
             type="button"
-            onClick={onClose}
-            className="px-4 py-2 text-slate-700 dark:text-slate-300 rounded-lg font-medium hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+            onClick={handleTestConnection}
+            disabled={connectionTest.status === 'testing'}
+            className="flex items-center justify-center gap-1.5 px-3 py-2 border border-slate-300 dark:border-slate-700 text-sm text-slate-700 dark:text-slate-300 rounded-lg font-medium hover:bg-white dark:hover:bg-slate-800 disabled:opacity-50 transition-colors"
           >
-            Cancel
+            {connectionTest.status === 'testing' ? <LoaderCircle size={16} className="animate-spin" /> : <Cable size={16} />}
+            Test Connection
           </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors"
-          >
-            Save Settings
-          </button>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3 py-2 text-sm text-slate-700 dark:text-slate-300 rounded-lg font-medium hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              className="px-3 py-2 text-sm bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors"
+            >
+              Save Settings
+            </button>
+          </div>
         </div>
       </div>
     </div>

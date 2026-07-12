@@ -31,7 +31,9 @@ export default defineConfig(() => {
       port: 3000,
       host: "0.0.0.0",
       proxy: {
-        "/ollama": {
+        // Keep the trailing slash: a broad `/ollama` prefix also captures
+        // frontend modules such as `/ollamaErrors.ts`.
+        "/ollama/": {
           target: "http://localhost:11434",
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/ollama/, ""),

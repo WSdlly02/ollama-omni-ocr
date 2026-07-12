@@ -14,32 +14,24 @@
 	# 开启 gzip 压缩
 	encode gzip
 
+	# 浏览器安全基线。相机和剪贴板只允许当前站点使用。
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+		Permissions-Policy "camera=(self), clipboard-write=(self)"
+		-Server
+	}
+
 	# 静态文件根目录
 	root * /usr/share/caddy
 
 	# 1. 优先处理 /ollama 路径的反向代理
 	handle_path /ollama/* {
-		# 全面的 CORS 允许头
-		header {
-			Access-Control-Allow-Origin *
-			Access-Control-Allow-Methods "GET, POST, OPTIONS"
-			Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With, Accept, Origin"
-			Access-Control-Expose-Headers "Content-Length, Content-Range, Content-Type"
-			Access-Control-Max-Age 3600
-		}
-
-		# 专门处理跨域预检 (Preflight) 请求
-		@options method OPTIONS
-		handle @options {
-			respond "" 204
-		}
-
-		# 反向代理到 Ollama
+		# 浏览器通过同源 /ollama 访问；不要把代理开放成通配 CORS 端点。
 		reverse_proxy {$OLLAMA_HOST:http://host.docker.internal:11434} {
 			header_up Host {upstream_hostport}
 			header_up X-Real-IP {remote_host}
-			header_up X-Forwarded-For {remote_host}
-			header_up X-Forwarded-Proto {scheme}
 		}
 	}
 
