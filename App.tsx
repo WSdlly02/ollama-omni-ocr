@@ -8,6 +8,13 @@ import ResultDisplay from './components/ResultDisplay';
 import SettingsModal from './components/SettingsModal';
 import { performOCR } from './ocrService';
 import { isResultContextStale, type ResultContext } from './resultFreshness';
+import { parseStoredChoice } from './preferences';
+import { validateOllamaSettings, type OllamaSettings, type Theme } from './settings';
+
+const OCR_STYLES = Object.values(OcrStyle);
+const OCR_MODES = Object.values(OcrMode);
+const INPUT_MODES: InputMode[] = ['upload', 'camera', 'handwriting'];
+const THEMES: Theme[] = ['system', 'light', 'dark'];
 
 const App: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
@@ -25,12 +32,14 @@ const App: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [baseUrl, setBaseUrl] = useState(() => localStorage.getItem('ollama_base_url') || `${window.location.origin}/ollama/v1`);
   const [model, setModel] = useState(() => localStorage.getItem('ollama_model') || 'qwen3-vl:8b-instruct');
-  const [style, setStyle] = useState<OcrStyle>(() => (localStorage.getItem('ocr_style') as OcrStyle) || OcrStyle.TEXT);
-  const [mode, setMode] = useState<OcrMode>(() => (localStorage.getItem('ocr_mode') as OcrMode) || OcrMode.STRICT);
-  const [inputMode, setInputMode] = useState<InputMode>(() => (localStorage.getItem('input_mode') as InputMode) || 'upload');
-  const [theme, setTheme] = useState<'system' | 'light' | 'dark'>(() => 
-    (localStorage.getItem('theme') as 'system' | 'light' | 'dark') || 'system'
-  );
+  const [style, setStyle] = useState<OcrStyle>(() =>
+    parseStoredChoice(localStorage.getItem('ocr_style'), OCR_STYLES, OcrStyle.TEXT));
+  const [mode, setMode] = useState<OcrMode>(() =>
+    parseStoredChoice(localStorage.getItem('ocr_mode'), OCR_MODES, OcrMode.STRICT));
+  const [inputMode, setInputMode] = useState<InputMode>(() =>
+    parseStoredChoice(localStorage.getItem('input_mode'), INPUT_MODES, 'upload'));
+  const [theme, setTheme] = useState<Theme>(() =>
+    parseStoredChoice(localStorage.getItem('theme'), THEMES, 'system'));
   const [systemPreferDark, setSystemPreferDark] = useState(() => 
     typeof window !== 'undefined' ? window.matchMedia('(prefers-color-scheme: dark)').matches : false
   );
@@ -72,6 +81,17 @@ const App: React.FC = () => {
   const handleRecognize = async () => {
     if (!file) return;
 
+    const validatedSettings = validateOllamaSettings({ baseUrl, model, theme });
+    if (!validatedSettings.value) {
+      setError("OCR settings are invalid. Review the highlighted fields and save them before retrying.");
+      setIsSettingsOpen(true);
+      return;
+    }
+    const effectiveBaseUrl = validatedSettings.value.baseUrl;
+    const effectiveModel = validatedSettings.value.model;
+    if (effectiveBaseUrl !== baseUrl) setBaseUrl(effectiveBaseUrl);
+    if (effectiveModel !== model) setModel(effectiveModel);
+
     abortControllerRef.current?.abort();
     const controller = new AbortController();
     const requestId = requestIdRef.current + 1;
@@ -81,8 +101,8 @@ const App: React.FC = () => {
       sourceRevision,
       style,
       mode,
-      baseUrl,
-      model,
+      baseUrl: effectiveBaseUrl,
+      model: effectiveModel,
     };
 
     setIsProcessing(true);
@@ -90,7 +110,7 @@ const App: React.FC = () => {
     setError(null);
 
     try {
-      const ocrText = await performOCR(file, baseUrl, model, style, mode, (text) => {
+      const ocrText = await performOCR(file, effectiveBaseUrl, effectiveModel, style, mode, (text) => {
         if (requestIdRef.current !== requestId || text.length === 0) return;
         setResult(text);
         setResultContext(requestContext);
@@ -131,6 +151,12 @@ const App: React.FC = () => {
     setError(null);
     // Deliberately keep the previous result. ResultDisplay marks it as stale
     // until recognition succeeds for this new source/configuration.
+  }, []);
+
+  const handleSaveSettings = useCallback((settings: OllamaSettings) => {
+    setBaseUrl(settings.baseUrl);
+    setModel(settings.model);
+    setTheme(settings.theme);
   }, []);
 
   const isResultStale = result !== null && isResultContextStale(resultContext, {
@@ -268,11 +294,9 @@ const App: React.FC = () => {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         baseUrl={baseUrl}
-        setBaseUrl={setBaseUrl}
         model={model}
-        setModel={setModel}
         theme={theme}
-        setTheme={setTheme}
+        onSave={handleSaveSettings}
       />
     </div>
   );

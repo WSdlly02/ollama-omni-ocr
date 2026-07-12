@@ -11,6 +11,7 @@
     ],
     "skipLibCheck": true,
     "strict": true,
+    "noUncheckedIndexedAccess": true,
     "types": [
       "node",
       "vite/client"

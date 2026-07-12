@@ -62,15 +62,16 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({ file, setFile, disabled }
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const droppedFile = e.dataTransfer.files[0];
-      if (droppedFile.type.startsWith('image/')) {
+      if (droppedFile?.type.startsWith('image/')) {
         setFile(droppedFile);
       }
     }
   }, [setFile, disabled]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setFile(e.target.files[0]);
+    const selectedFile = e.target.files?.[0];
+    if (selectedFile) {
+      setFile(selectedFile);
     }
   };
 

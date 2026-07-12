@@ -1,42 +1,28 @@
-import React, { useRef, useState, useEffect, useCallback } from "react";
+import React, { useRef, useState, useEffect, useCallback, useReducer } from "react";
 import { createPortal } from "react-dom";
+import { Pen, Maximize2 } from "lucide-react";
 import {
-  Pen,
-  Eraser,
-  Undo,
-  Redo,
-  Trash2,
-  Maximize2,
-  Minimize2,
-  Hand,
-} from "lucide-react";
-import SegmentedControl from "./SegmentedControl";
-
-interface Point {
-  x: number;
-  y: number;
-}
-
-interface Stroke {
-  points: Point[];
-  tool: "pen" | "eraser"; // Keeping the tool type for structure, though logic splits
-  width: number;
-  color: string;
-  minX: number;
-  maxX: number;
-  minY: number;
-  maxY: number;
-}
+  createPenStroke,
+  drawStroke,
+  eraseStrokesAtPoint,
+  type Point,
+  type Stroke,
+} from "./handwriting/strokeModel";
+import {
+  createStrokeHistory,
+  getCurrentStrokes,
+  strokeHistoryReducer,
+} from "./handwriting/strokeHistory";
+import HandwritingToolbar, {
+  type RuntimeTool,
+  type ToolMode,
+} from "./handwriting/HandwritingToolbar";
 
 interface HandwritingPadProps {
   onFileChange: (file: File | null) => void;
   disabled?: boolean;
   isDarkMode?: boolean;
 }
-
-type RuntimeTool = "pen" | "eraser" | "hand";
-type ToolMode = "auto" | RuntimeTool;
-const MAX_HISTORY_STEPS = 100;
 
 const HandwritingPad: React.FC<HandwritingPadProps> = ({
   onFileChange,
@@ -47,9 +33,12 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const rectRef = useRef<DOMRect | null>(null);
 
-  const [history, setHistory] = useState<Stroke[][]>([[]]);
-  const [currentStep, setCurrentStep] = useState(0);
-  const currentStrokes = history[currentStep];
+  const [history, dispatchHistory] = useReducer(
+    strokeHistoryReducer,
+    undefined,
+    createStrokeHistory,
+  );
+  const currentStrokes = getCurrentStrokes(history);
 
   const [activeStroke, setActiveStroke] = useState<Stroke | null>(null);
   const [toolMode, setToolMode] = useState<ToolMode>("pen");
@@ -61,6 +50,9 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({
   const lastPosRef = useRef<{ x: number; y: number } | null>(null);
   const hintTimerRef = useRef<number | null>(null);
   const autoEraserLockedRef = useRef(false);
+  const eraserWorkingRef = useRef<Stroke[] | null>(null);
+  const eraserChangedRef = useRef(false);
+  const [eraserPreview, setEraserPreview] = useState<Stroke[] | null>(null);
 
   // Dynamic colors based on theme
   const penColor = isDarkMode ? "#ffffff" : "#000000";
@@ -69,63 +61,17 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({
   const eraserRadius = 4;
 
   // --- Helpers ---
-  const getCoordinates = (
-    e: React.PointerEvent | PointerEvent | React.MouseEvent | React.TouchEvent
-  ): Point | null => {
+  const getCoordinates = (event: { clientX: number; clientY: number }): Point | null => {
     const canvas = canvasRef.current;
     if (!canvas) return null;
 
     // Use cached rect if available to avoid reflow, fallback to fresh rect if needed
     const rect = rectRef.current || canvas.getBoundingClientRect();
-    const clientX =
-      "clientX" in e ? e.clientX : (e as any).changedTouches[0].clientX;
-    const clientY =
-      "clientY" in e ? e.clientY : (e as any).changedTouches[0].clientY;
 
     return {
-      x: clientX - rect.left,
-      y: clientY - rect.top,
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
     };
-  };
-
-  const drawStroke = (ctx: CanvasRenderingContext2D, stroke: Stroke) => {
-    if (stroke.points.length < 2) {
-      if (stroke.points.length === 1) {
-        ctx.fillStyle = stroke.color;
-        ctx.beginPath();
-        ctx.arc(
-          stroke.points[0].x,
-          stroke.points[0].y,
-          stroke.width / 2,
-          0,
-          Math.PI * 2
-        );
-        ctx.fill();
-      }
-      return;
-    }
-
-    ctx.lineWidth = stroke.width;
-    ctx.strokeStyle = stroke.color;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-
-    ctx.beginPath();
-    const { points } = stroke;
-    ctx.moveTo(points[0].x, points[0].y);
-
-    for (let i = 1; i < points.length - 1; i++) {
-      const p1 = points[i];
-      const p2 = points[i + 1];
-      const mid = {
-        x: (p1.x + p2.x) / 2,
-        y: (p1.y + p2.y) / 2,
-      };
-      ctx.quadraticCurveTo(p1.x, p1.y, mid.x, mid.y);
-    }
-
-    ctx.lineTo(points[points.length - 1].x, points[points.length - 1].y);
-    ctx.stroke();
   };
 
   const renderCanvas = useCallback(() => {
@@ -150,7 +96,7 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({
 
     // Draw strokes
     [
-      ...currentStrokes,
+      ...(eraserPreview ?? currentStrokes),
       ...(activeStroke ? [activeStroke] : []),
     ].forEach((s) => {
       // Recalculate color based on theme
@@ -163,17 +109,14 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({
     });
 
     ctx.restore();
-  }, [currentStrokes, activeStroke, viewOffset, bgColor, penColor]);
+  }, [currentStrokes, eraserPreview, activeStroke, viewOffset, bgColor, penColor]);
 
   // Export to App state
-  const exportImage = useCallback(() => {
+  const exportImage = useCallback((strokes: Stroke[]) => {
     // NOTE: We always export as BLACK INK on WHITE BACKGROUND for OCR
     // regardless of display theme.
 
-    const allStrokes = [...currentStrokes];
-    if (activeStroke) allStrokes.push(activeStroke);
-
-    if (allStrokes.length === 0) {
+    if (strokes.length === 0) {
       onFileChange(null);
       return;
     }
@@ -184,7 +127,7 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({
       minY = Infinity,
       maxY = -Infinity;
 
-    allStrokes.forEach((s) => {
+    strokes.forEach((s) => {
       if (s.minX < minX) minX = s.minX;
       if (s.maxX > maxX) maxX = s.maxX;
       if (s.minY < minY) minY = s.minY;
@@ -217,7 +160,7 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({
     tCtx.translate(-minX, -minY);
 
     // Force black ink for export
-    const exportStrokes = allStrokes.map((s) => ({ ...s, color: "#000000" }));
+    const exportStrokes = strokes.map((s) => ({ ...s, color: "#000000" }));
 
     exportStrokes.forEach((s) => drawStroke(tCtx, s));
 
@@ -233,58 +176,19 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({
       "image/jpeg",
       0.95
     );
-  }, [currentStrokes, activeStroke, onFileChange]);
+  }, [onFileChange]);
 
   // --- Interaction Logic ---
 
-  const commitHistory = (newStrokes: Stroke[]) => {
-    const branchedHistory = history.slice(0, currentStep + 1);
-    branchedHistory.push(newStrokes);
-    const newHistory = branchedHistory.slice(-MAX_HISTORY_STEPS);
-    setHistory(newHistory);
-    // Export whenever history is committed (end of stroke, clear, undo/redo)
-    // We need to wait for state update to trigger export?
-    // exportImage depends on currentStrokes which will differ from newStrokes slightly in timing if useeffect.
-    // Better call export with newStrokes logic?
-    // Actually, let's use useEffect to trigger export when currentStep changes.
-    setCurrentStep(newHistory.length - 1);
-  };
+  const commitHistory = useCallback((strokes: Stroke[]) => {
+    dispatchHistory({ type: "commit", strokes });
+  }, []);
 
   // Export on history change
   useEffect(() => {
-    // Debounce slightly or just call
-    const timer = setTimeout(exportImage, 100);
+    const timer = window.setTimeout(() => exportImage(currentStrokes), 100);
     return () => clearTimeout(timer);
-  }, [history, currentStep, exportImage]);
-
-  const checkEraserHit = (
-    x: number,
-    y: number,
-    strokesToCheck: Stroke[]
-  ): Stroke[] => {
-    const r = eraserRadius;
-    const rSq = r * r;
-
-    return strokesToCheck.filter((stroke) => {
-      if (
-        x < stroke.minX - r ||
-        x > stroke.maxX + r ||
-        y < stroke.minY - r ||
-        y > stroke.maxY + r
-      ) {
-        return true;
-      }
-      for (let i = 0; i < stroke.points.length; i += 2) {
-        const p = stroke.points[i];
-        const dx = p.x - x;
-        const dy = p.y - y;
-        if (dx * dx + dy * dy < rSq) {
-          return false;
-        }
-      }
-      return true;
-    });
-  };
+  }, [currentStrokes, exportImage]);
 
   const showAutoToolHint = useCallback((message: string) => {
     setAutoToolHint(message);
@@ -342,16 +246,16 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({
     [showAutoToolHint]
   );
 
-  const createPenStroke = (point: Point): Stroke => ({
-    points: [point],
-    tool: "pen",
-    color: penColor,
-    width: penWidth,
-    minX: point.x,
-    maxX: point.x,
-    minY: point.y,
-    maxY: point.y,
-  });
+  const eraseAtPoint = useCallback((point: Point, initialStrokes: Stroke[]) => {
+    const baseStrokes = eraserWorkingRef.current ?? initialStrokes;
+    const remaining = eraseStrokesAtPoint(baseStrokes, point, eraserRadius);
+
+    if (remaining !== baseStrokes) {
+      eraserChangedRef.current = true;
+    }
+    eraserWorkingRef.current = remaining;
+    setEraserPreview(remaining);
+  }, []);
 
   const handlePointerDown = (e: React.PointerEvent) => {
     if (disabled) return;
@@ -386,12 +290,9 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({
     };
 
     if (effectiveTool === "pen") {
-      setActiveStroke(createPenStroke(point));
+      setActiveStroke(createPenStroke(point, penColor, penWidth));
     } else if (effectiveTool === "eraser") {
-      const remaining = checkEraserHit(point.x, point.y, currentStrokes);
-      if (remaining.length !== currentStrokes.length) {
-        commitHistory(remaining);
-      }
+      eraseAtPoint(point, currentStrokes);
     }
   };
 
@@ -443,7 +344,7 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({
             x: domPoint.x - viewOffset.x,
             y: domPoint.y - viewOffset.y,
           };
-          return createPenStroke(point);
+          return createPenStroke(point, penColor, penWidth);
         }
 
         let newPoints = [...prev.points];
@@ -486,8 +387,10 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({
         };
       });
     } else if (effectiveTool === "eraser") {
+      let initialStrokes = currentStrokes;
       if (activeStroke) {
-        commitHistory([...currentStrokes, activeStroke]);
+        initialStrokes = [...currentStrokes, activeStroke];
+        eraserChangedRef.current = true;
         setActiveStroke(null);
       }
 
@@ -498,10 +401,7 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({
         y: domPoint.y - viewOffset.y,
       };
 
-      const remaining = checkEraserHit(point.x, point.y, currentStrokes);
-      if (remaining.length !== currentStrokes.length) {
-        commitHistory(remaining);
-      }
+      eraseAtPoint(point, initialStrokes);
     }
   };
 
@@ -510,7 +410,14 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({
       e.currentTarget.releasePointerCapture(e.pointerId);
     }
 
-    if (activeStroke) {
+    if (eraserWorkingRef.current) {
+      if (eraserChangedRef.current) {
+        commitHistory(eraserWorkingRef.current);
+      }
+      eraserWorkingRef.current = null;
+      eraserChangedRef.current = false;
+      setEraserPreview(null);
+    } else if (activeStroke) {
       commitHistory([...currentStrokes, activeStroke]);
       setActiveStroke(null);
     }
@@ -555,18 +462,14 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({
 
   useEffect(() => {
     renderCanvas();
-  }, [renderCanvas, history, currentStep]);
+  }, [renderCanvas]);
 
   const handleUndo = () => {
-    if (currentStep > 0) {
-      setCurrentStep((prev) => prev - 1);
-    }
+    dispatchHistory({ type: "undo" });
   };
 
   const handleRedo = () => {
-    if (currentStep < history.length - 1) {
-      setCurrentStep((prev) => prev + 1);
-    }
+    dispatchHistory({ type: "redo" });
   };
 
   const handleClear = () => {
@@ -589,72 +492,18 @@ const HandwritingPad: React.FC<HandwritingPadProps> = ({
       `}
       style={isFullscreen ? { top: 0, left: 0 } : {}}
     >
-      {/* Toolbar */}
-      <div className="flex items-center justify-between p-2 sm:p-3 border-b border-slate-100 dark:border-slate-700 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur-sm z-10 transition-opacity">
-        <div className="flex items-center space-x-1 sm:space-x-2">
-          {/* Tools */}
-          {/* Tools */}
-          {/* Tools */}
-          <div>
-            <SegmentedControl
-              name="drawing-tools"
-              value={toolMode}
-              onChange={(val) => setToolMode(val as ToolMode)}
-              options={[
-                { value: 'auto', label: 'Auto' },
-                { value: 'hand', label: '', icon: Hand },
-                { value: 'pen', label: '', icon: Pen },
-                { value: 'eraser', label: '', icon: Eraser }
-              ]}
-              fullWidth={false}
-            />
-          </div>
-
-          <div className="w-px h-6 bg-slate-300 dark:bg-slate-700 mx-1" />
-
-          {/* History */}
-          <div className="flex space-x-1">
-            <button
-              onClick={handleUndo}
-              disabled={currentStep === 0}
-              className="p-1.5 sm:p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 transition-colors"
-              title="Undo"
-            >
-              <Undo className="w-4 h-4 sm:w-5 sm:h-5" />
-            </button>
-            <button
-              onClick={handleRedo}
-              disabled={currentStep === history.length - 1}
-              className="p-1.5 sm:p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 transition-colors"
-              title="Redo"
-            >
-              <Redo className="w-4 h-4 sm:w-5 sm:h-5" />
-            </button>
-          </div>
-        </div>
-
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={handleClear}
-            disabled={currentStrokes.length === 0}
-            className="p-1.5 sm:p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
-            title="Clear Canvas"
-          >
-            <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
-          </button>
-          <button
-            onClick={() => setIsFullscreen(!isFullscreen)}
-            className="p-1.5 sm:p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
-          >
-            {isFullscreen ? (
-              <Minimize2 className="w-4 h-4 sm:w-5 sm:h-5" />
-            ) : (
-              <Maximize2 className="w-4 h-4 sm:w-5 sm:h-5" />
-            )}
-          </button>
-        </div>
-      </div>
+      <HandwritingToolbar
+        toolMode={toolMode}
+        onToolModeChange={setToolMode}
+        canUndo={history.index > 0}
+        canRedo={history.index < history.snapshots.length - 1}
+        hasContent={currentStrokes.length > 0}
+        isFullscreen={isFullscreen}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        onClear={handleClear}
+        onToggleFullscreen={() => setIsFullscreen((current) => !current)}
+      />
 
       {/* Canvas Area - Keep background white for ink contrast */}
       <div

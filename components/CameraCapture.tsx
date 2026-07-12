@@ -57,17 +57,19 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onFileChange, disabled })
       // setCameraState('active') triggers a re-render which mounts the video,
       // and the useEffect below will connect the stream once it's in the DOM.
       setCameraState('active');
-    } catch (err: any) {
+    } catch (err: unknown) {
       stopStream();
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+      const errorName = err instanceof DOMException ? err.name : '';
+      const message = err instanceof Error ? err.message : 'Unknown camera error';
+      if (errorName === 'NotAllowedError' || errorName === 'PermissionDeniedError') {
         setCameraState('denied');
         setErrorMsg('Camera permission denied. Please allow camera access in your browser settings.');
-      } else if (err.name === 'NotFoundError') {
+      } else if (errorName === 'NotFoundError') {
         setCameraState('error');
         setErrorMsg('No camera device found on this device.');
       } else {
         setCameraState('error');
-        setErrorMsg(`Camera error: ${err.message}`);
+        setErrorMsg(`Camera error: ${message}`);
       }
     }
   }, [stopStream]);

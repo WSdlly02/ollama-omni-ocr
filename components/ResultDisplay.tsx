@@ -268,14 +268,13 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
                 rehypePlugins={[rehypeKatex]}
                 components={{
                   // Override pre to avoid prose styling conflict (double background/border)
-                  pre({ node, children, ...props }: any) {
-                    return <div {...props} className="not-prose my-4 w-full overflow-x-auto">{children}</div>;
+                  pre({ children }) {
+                    return <div className="not-prose my-4 w-full overflow-x-auto">{children}</div>;
                   },
-                  code({node, inline, className, children, ...props}: any) {
+                  code({ className, children, ...props }) {
                     const match = /language-(\w+)/.exec(className || '')
-                    return !inline && match ? (
+                    return match ? (
                       <SyntaxHighlighter
-                        {...props}
                         style={isDarkMode ? oneDark : oneLight}
                         language={match[1]}
                         PreTag="div"

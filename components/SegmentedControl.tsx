@@ -7,6 +7,7 @@ export interface SegmentedControlOption<T extends string> {
   label: string;
   icon?: LucideIcon;
   description?: string; // Optional tooltip or subtile
+  ariaLabel?: string;
 }
 
 interface SegmentedControlProps<T extends string> {
@@ -47,9 +48,11 @@ const SegmentedControl = <T extends string>({
 
         return (
           <button
+            type="button"
             key={option.value}
             onClick={() => onChange(option.value)}
             disabled={disabled}
+            aria-label={option.ariaLabel}
             className={`
               relative z-10 flex items-center justify-center gap-2 rounded-lg font-medium transition-colors duration-200
               ${fullWidth ? 'flex-1' : ''}
